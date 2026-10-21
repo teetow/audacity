@@ -10,7 +10,7 @@ Run `Audacity4.exe -F` with the environment variable `MUSE_SCREENCAP` set (any v
 
 - doesn't activate the app's windows (Windows): launching, dialogs and popups don't take the focus. Clicking a window still activates it; Alt-Tab and the taskbar don't.
 - keeps popups (menus, flyouts) open while the app has no focus. A press outside still closes them; a script closes them by sending the popup window WM_CLOSE (a posted Escape doesn't arrive, keys go to the focused window).
-- shows the release UI on development builds (dev mode off: no DevTools tab, no Diagnostics menu).
+- shows the release UI on development builds (dev mode off: no DevTools tab, no Diagnostics menu) and the release window title ("Audacity 4.0", not "Audacity 4.0 dev").
 - doesn't check for updates, so repeated runs send no update-check requests.
 
 Without the variable the build behaves like upstream, plus the accessibility fixes.
