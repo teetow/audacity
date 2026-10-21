@@ -1,0 +1,59 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Johan Althoff <teetow@gmail.com>
+Date: Wed, 21 Oct 2026 14:44:08 +0200
+Subject: [PATCH] feat(screencap): keep popups open without focus when
+ MUSE_SCREENCAP is set
+
+Screen capture rigs drive the app through UI Automation while it stays
+in the background, so it never has focus. Popups (menus, flyouts) close
+as soon as the application is inactive or the popup window loses focus,
+which makes them impossible to capture that way.
+
+With MUSE_SCREENCAP set, ignore application deactivation and popup
+focus-out. A press outside the popup still closes it. Without the
+variable nothing changes.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ .../internal/popupviewclosecontroller.cpp          | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/framework/uicomponents/qml/Muse/UiComponents/internal/popupviewclosecontroller.cpp b/framework/uicomponents/qml/Muse/UiComponents/internal/popupviewclosecontroller.cpp
+index 5130f6cf9..cc012afdb 100644
+--- a/framework/uicomponents/qml/Muse/UiComponents/internal/popupviewclosecontroller.cpp
++++ b/framework/uicomponents/qml/Muse/UiComponents/internal/popupviewclosecontroller.cpp
+@@ -25,6 +25,15 @@
+ #include <QGuiApplication>
+ #include <QQuickWindow>
+ 
++//! NOTE Screen capture rigs drive the app in the background, where it never has
++//! focus: with MUSE_SCREENCAP set, popups stay open when the app or the popup
++//! loses focus. A press outside the popup still closes it.
++static bool keepOpenWithoutFocus()
++{
++    static const bool keep = qEnvironmentVariableIsSet("MUSE_SCREENCAP");
++    return keep;
++}
++
+ using namespace muse::uicomponents;
+ 
+ PopupViewCloseController::PopupViewCloseController(const modularity::ContextPtr& iocCtx, QObject* parent)
+@@ -109,6 +118,9 @@ bool PopupViewCloseController::eventFilter(QObject* watched, QEvent* event)
+     } else if (QEvent::MouseButtonPress == event->type()) {
+         doFocusOut(static_cast<QMouseEvent*>(event)->globalPosition());
+     } else if (QEvent::FocusOut == event->type() && watched == popupWindow()) {
++        if (keepOpenWithoutFocus()) {
++            return QObject::eventFilter(watched, event);
++        }
+         doFocusOut(QCursor::pos());
+     } else if (QEvent::Close == event->type() && watched == popupWindow()) {
+         if (!m_canClose) {
+@@ -121,7 +133,7 @@ bool PopupViewCloseController::eventFilter(QObject* watched, QEvent* event)
+ 
+ void PopupViewCloseController::onApplicationStateChanged(Qt::ApplicationState state)
+ {
+-    if (!m_active || !m_isCloseOnPressOutsideParent) {
++    if (!m_active || !m_isCloseOnPressOutsideParent || keepOpenWithoutFocus()) {
+         return;
+     }
+ 
