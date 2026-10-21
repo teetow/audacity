@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Johan Althoff <teetow@gmail.com>
+Date: Wed, 21 Oct 2026 14:41:33 +0200
+Subject: [PATCH] fix(accessibility): keep the root's child list in step with
+ reparented items
+
+Items without an accessible parent register under the controller (the
+root). When they were later given a parent, only a ParentChanged event
+was sent; the root kept them in its child list. Such a stale child
+reports a different parent(), so sibling navigation from it continues
+inside that parent and never returns: every later root child became
+unreachable. In Audacity this hid the whole project view (track panel,
+Add track) and the contents of dialogs such as "Unsaved changes" from
+screen readers and UI Automation.
+
+Update the root's child list on every parent change, and send the
+change also when an item's parent is cleared, so it can rejoin the root.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ .../internal/accessibilitycontroller.cpp          | 15 +++++++++++++--
+ framework/ui/qml/Muse/Ui/qmlaccessible.cpp        |  4 +++-
+ 2 files changed, 16 insertions(+), 3 deletions(-)
+
+diff --git a/framework/accessibility/internal/accessibilitycontroller.cpp b/framework/accessibility/internal/accessibilitycontroller.cpp
+index 78a32a0da..cc5c52713 100644
+--- a/framework/accessibility/internal/accessibilitycontroller.cpp
++++ b/framework/accessibility/internal/accessibilitycontroller.cpp
+@@ -372,8 +372,19 @@ void AccessibilityController::propertyChanged(IAccessible* item, IAccessible::Pr
+     switch (property) {
+     case IAccessible::Property::Undefined:
+         return;
+-    case IAccessible::Property::Parent: etype = QAccessible::ParentChanged;
+-        break;
++    case IAccessible::Property::Parent: {
++        //! NOTE Items register under the root when they have no parent yet. Keep
++        //! the root's child list in step when they are reparented: a stale entry
++        //! is a child whose parent() is somewhere else, which breaks sibling
++        //! navigation and hides every later root child from screen readers.
++        const bool underRoot = item->accessibleParent() == this;
++        if (underRoot && !m_children.contains(item)) {
++            m_children.append(item);
++        } else if (!underRoot) {
++            m_children.removeOne(item);
++        }
++        etype = QAccessible::ParentChanged;
++    } break;
+     case IAccessible::Property::Name:
+     case IAccessible::Property::Description: {
+         if (item == m_lastFocused) {
+diff --git a/framework/ui/qml/Muse/Ui/qmlaccessible.cpp b/framework/ui/qml/Muse/Ui/qmlaccessible.cpp
+index 3d7891139..f1135be35 100644
+--- a/framework/ui/qml/Muse/Ui/qmlaccessible.cpp
++++ b/framework/ui/qml/Muse/Ui/qmlaccessible.cpp
+@@ -527,9 +527,11 @@ void AccessibleItem::setAccessibleParent(AccessibleItem* p)
+ 
+     if (m_accessibleParent) {
+         m_accessibleParent->addChild(this);
+-        m_accessiblePropertyChanged.send(IAccessible::Property::Parent, Val());
+     }
+ 
++    //! NOTE Also when cleared: the item then falls back to the root, which has to hear about it.
++    m_accessiblePropertyChanged.send(IAccessible::Property::Parent, Val());
++
+     emit accessiblePrnChanged();
+ }
+ 
