@@ -29,7 +29,13 @@ namespace {
 static QString appDisplayName()
 {
 #ifdef AU4_APP_TITLE_VERSION
-    return QString::fromUtf8(AU4_APP_TITLE_VERSION);
+    QString title = QString::fromUtf8(AU4_APP_TITLE_VERSION);
+    //! NOTE Screen captures must look like the release, whose title is "Audacity 4.0":
+    //! drop the version label and release channel ("dev") under MUSE_SCREENCAP.
+    if (qEnvironmentVariableIsSet("MUSE_SCREENCAP")) {
+        title = title.section(QLatin1Char(' '), 0, 1);
+    }
+    return title;
 #else
     return QStringLiteral("Audacity 4");
 #endif
