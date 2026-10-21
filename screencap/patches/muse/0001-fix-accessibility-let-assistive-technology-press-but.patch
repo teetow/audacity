@@ -1,8 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Johan Althoff <teetow@gmail.com>
 Date: Wed, 21 Oct 2026 14:31:57 +0200
-Subject: [PATCH 1/2] fix(accessibility): let assistive technology press
- buttons
+Subject: [PATCH] fix(accessibility): let assistive technology press buttons
 
 AccessibleItemInterface implemented no QAccessibleActionInterface, so no
 control could be activated through accessibility: on Windows, UI

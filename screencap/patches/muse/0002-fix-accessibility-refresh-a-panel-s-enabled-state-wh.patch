@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Johan Althoff <teetow@gmail.com>
 Date: Wed, 21 Oct 2026 14:31:57 +0200
-Subject: [PATCH 2/2] fix(accessibility): refresh a panel's enabled state when
- its controls change
+Subject: [PATCH] fix(accessibility): refresh a panel's enabled state when its
+ controls change
 
 NavigationPanel::enabled() is only true when the panel has an enabled
 control, but the accessible Enabled state was written only on
