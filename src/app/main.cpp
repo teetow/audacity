@@ -53,6 +53,28 @@ static void crashCallback(int signum)
 #include "winleaktracker.h"
 #endif
 
+#if (defined (_MSCVER) || defined (_MSC_VER))
+//! Screen capture rigs drive the app in the background while someone keeps
+//! working at the same desktop. Under MUSE_SCREENCAP the app never activates
+//! its own windows (launch, dialogs, popups), so it can't steal focus.
+//! Side effect: that instance can't be typed into.
+static LRESULT CALLBACK screencapNoActivateProc(int code, WPARAM wParam, LPARAM lParam)
+{
+    if (code == HCBT_ACTIVATE) {
+        return 1; // refuse activation
+    }
+    return CallNextHookEx(nullptr, code, wParam, lParam);
+}
+
+static void installScreencapNoActivate()
+{
+    if (qEnvironmentVariableIsSet("MUSE_SCREENCAP")) {
+        SetWindowsHookExW(WH_CBT, screencapNoActivateProc, nullptr, GetCurrentThreadId());
+    }
+}
+
+#endif
+
 int main(int argc, char** argv)
 {
 #ifndef MUSE_MODULE_DIAGNOSTICS_CRASHPAD_CLIENT
@@ -204,6 +226,9 @@ int main(int argc, char** argv)
         QApplication* guiApp = new QApplication(argcFinal, argvFinal);
         guiApp->setQuitOnLastWindowClosed(false);
         qApplication = guiApp;
+#if (defined (_MSCVER) || defined (_MSC_VER))
+        installScreencapNoActivate();
+#endif
     }
 
     commandLineParser.processBuiltinArgs(*qApplication);
