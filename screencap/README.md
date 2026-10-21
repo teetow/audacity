@@ -8,8 +8,8 @@ Branch `screencap`, worktree `D:\projects\code\audacity.worktrees\screencap`. No
 
 Run `Audacity4.exe -F` with the environment variable `MUSE_SCREENCAP` set (any value). `-F` starts from factory settings, so every run looks the same. `MUSE_SCREENCAP`:
 
-- never activates the app's windows (Windows): launching, dialogs and popups don't take the focus. That instance can't be typed into; drive it through UI Automation.
-- keeps popups (menus, flyouts) open while the app has no focus. A press outside still closes them.
+- doesn't activate the app's windows (Windows): launching, dialogs and popups don't take the focus. Clicking a window still activates it; Alt-Tab and the taskbar don't.
+- keeps popups (menus, flyouts) open while the app has no focus. A press outside still closes them; a script closes them by sending the popup window WM_CLOSE (a posted Escape doesn't arrive, keys go to the focused window).
 - shows the release UI on development builds (dev mode off: no DevTools tab, no Diagnostics menu).
 - doesn't check for updates, so repeated runs send no update-check requests.
 
