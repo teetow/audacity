@@ -1,0 +1,189 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Johan Althoff <teetow@gmail.com>
+Date: Wed, 21 Oct 2026 14:31:57 +0200
+Subject: [PATCH 1/2] fix(accessibility): let assistive technology press
+ buttons
+
+AccessibleItemInterface implemented no QAccessibleActionInterface, so no
+control could be activated through accessibility: on Windows, UI
+Automation's Invoke pattern was missing on every button. Screen readers
+fall back to simulated clicks; Voice Access and test automation cannot
+press anything.
+
+Expose the press action for button-like roles and route it through a new
+IAccessible::accessibleTrigger(), which AccessibleItem implements by
+triggering its NavigationControl, the same path as Enter/Space. The
+trigger is queued so a press that opens a modal dialog does not block
+the accessibility client's call. The NVDA list-item workaround is kept
+as it was.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ framework/accessibility/iaccessible.h         |  4 ++
+ .../internal/accessibleiteminterface.cpp      | 42 +++++++++++++++++++
+ .../internal/accessibleiteminterface.h        |  8 +++-
+ framework/ui/qml/Muse/Ui/qmlaccessible.cpp    | 23 ++++++++++
+ framework/ui/qml/Muse/Ui/qmlaccessible.h      |  3 ++
+ 5 files changed, 79 insertions(+), 1 deletion(-)
+
+diff --git a/framework/accessibility/iaccessible.h b/framework/accessibility/iaccessible.h
+index fba8f8026..804220147 100644
+--- a/framework/accessibility/iaccessible.h
++++ b/framework/accessibility/iaccessible.h
+@@ -160,6 +160,10 @@ public:
+     // ListView item Interface
+     virtual int accessibleRowIndex() const = 0;
+ 
++    // Action Interface
++    //! Activates the item the way Enter/Space would. Returns false if the item can't be activated.
++    virtual bool accessibleTrigger() { return false; }
++
+     virtual async::Channel<IAccessible::Property, Val> accessiblePropertyChanged() const = 0;
+ 
+     virtual void setState(State state, bool arg) = 0;
+diff --git a/framework/accessibility/internal/accessibleiteminterface.cpp b/framework/accessibility/internal/accessibleiteminterface.cpp
+index 53f85fcb3..dfa441990 100644
+--- a/framework/accessibility/internal/accessibleiteminterface.cpp
++++ b/framework/accessibility/internal/accessibleiteminterface.cpp
+@@ -548,10 +548,52 @@ void* AccessibleItemInterface::interface_cast(QAccessible::InterfaceType type)
+         return static_cast<QAccessibleTableCellInterface*>(this);
+     }
+ 
++    //! NOTE Lets assistive technology press buttons (UI Automation's Invoke on Windows)
++    if (type == QAccessible::InterfaceType::ActionInterface && isPressable()) {
++        return static_cast<QAccessibleActionInterface*>(this);
++    }
++
+     //! NOTE Not implemented
+     return nullptr;
+ }
+ 
++bool AccessibleItemInterface::isPressable() const
++{
++    switch (role()) {
++    case QAccessible::Button:
++    case QAccessible::ButtonMenu:
++    case QAccessible::ButtonDropDown:
++    case QAccessible::CheckBox:
++    case QAccessible::RadioButton:
++    case QAccessible::MenuItem:
++    case QAccessible::PageTab:
++    case QAccessible::ComboBox:
++        return true;
++    default:
++        return false;
++    }
++}
++
++QStringList AccessibleItemInterface::actionNames() const
++{
++    if (!isPressable() || state().disabled) {
++        return {};
++    }
++    return { QAccessibleActionInterface::pressAction() };
++}
++
++void AccessibleItemInterface::doAction(const QString& actionName)
++{
++    if (actionName == QAccessibleActionInterface::pressAction() && isPressable()) {
++        m_object->item()->accessibleTrigger();
++    }
++}
++
++QStringList AccessibleItemInterface::keyBindingsForAction(const QString&) const
++{
++    return {};
++}
++
+ IAccessible::TextBoundaryType AccessibleItemInterface::muBoundaryType(QAccessible::TextBoundaryType qtBoundaryType) const
+ {
+     switch (qtBoundaryType) {
+diff --git a/framework/accessibility/internal/accessibleiteminterface.h b/framework/accessibility/internal/accessibleiteminterface.h
+index 829a11be8..53848d84a 100644
+--- a/framework/accessibility/internal/accessibleiteminterface.h
++++ b/framework/accessibility/internal/accessibleiteminterface.h
+@@ -31,7 +31,7 @@
+ 
+ namespace muse::accessibility {
+ class AccessibleItemInterface : public QAccessibleInterface, public QAccessibleValueInterface, public QAccessibleTextInterface,
+-    public QAccessibleTableCellInterface, public muse::Contextable
++    public QAccessibleTableCellInterface, public QAccessibleActionInterface, public muse::Contextable
+ {
+     ContextInject<IInteractive> interactive = { this };
+ 
+@@ -97,11 +97,17 @@ public:
+ 
+     QAccessibleInterface* table() const override;
+ 
++    // Action Interface
++    QStringList actionNames() const override;
++    void doAction(const QString& actionName) override;
++    QStringList keyBindingsForAction(const QString& actionName) const override;
++
+ protected:
+     void* interface_cast(QAccessible::InterfaceType t) override;
+ 
+ private:
+ 
++    bool isPressable() const;
+     IAccessible::TextBoundaryType muBoundaryType(QAccessible::TextBoundaryType qtBoundaryType) const;
+     QString announcement() const;
+     QString description() const;
+diff --git a/framework/ui/qml/Muse/Ui/qmlaccessible.cpp b/framework/ui/qml/Muse/Ui/qmlaccessible.cpp
+index 8e8b8f2ce..3d7891139 100644
+--- a/framework/ui/qml/Muse/Ui/qmlaccessible.cpp
++++ b/framework/ui/qml/Muse/Ui/qmlaccessible.cpp
+@@ -22,9 +22,12 @@
+ 
+ #include "qmlaccessible.h"
+ 
++#include <QPointer>
+ #include <QQuickWindow>
+ #include <QTextBoundaryFinder>
+ 
++#include "navigationcontrol.h"
++
+ #include "log.h"
+ 
+ using namespace muse;
+@@ -380,6 +383,26 @@ int AccessibleItem::accessibleRowIndex() const
+     return m_row;
+ }
+ 
++bool AccessibleItem::accessibleTrigger()
++{
++    //! NOTE The navigation control that owns this item is what Enter/Space trigger,
++    //! so an assistive-technology "press" takes the same path as the keyboard.
++    QPointer<NavigationControl> control = qobject_cast<NavigationControl*>(parent());
++    if (!control || !accessibleState(State::Enabled)) {
++        return false;
++    }
++
++    //! NOTE Queued: a press that opens a modal dialog must not block the
++    //! accessibility client's call until the dialog closes.
++    QMetaObject::invokeMethod(control, [control]() {
++        if (control) {
++            control->trigger();
++        }
++    }, Qt::QueuedConnection);
++
++    return true;
++}
++
+ void AccessibleItem::classBegin()
+ {
+ }
+diff --git a/framework/ui/qml/Muse/Ui/qmlaccessible.h b/framework/ui/qml/Muse/Ui/qmlaccessible.h
+index bce02fceb..c8a23c43b 100644
+--- a/framework/ui/qml/Muse/Ui/qmlaccessible.h
++++ b/framework/ui/qml/Muse/Ui/qmlaccessible.h
+@@ -152,6 +152,9 @@ public:
+     // ListView item Interface
+     int accessibleRowIndex() const override;
+ 
++    // Action Interface
++    bool accessibleTrigger() override;
++
+     async::Channel<Property, Val> accessiblePropertyChanged() const override;
+ 
+     void setState(State st, bool arg) override;
