@@ -11,7 +11,7 @@ Fixes to the MuseScore framework live in `muse/`, a submodule. They are commits 
 `apply-patches.sh` applies them to whatever commit master pins `muse/` to, and skips any already applied. To add or change one: commit in `muse/` on its `screencap` branch, then re-export:
 
 ```
-git -C muse format-patch --no-signature --zero-commit -o ../screencap/patches/muse <pinned-commit>..screencap
+git -C muse format-patch -N --no-signature --zero-commit -o ../screencap/patches/muse <pinned-commit>..screencap
 ```
 
 ## Daily routine
