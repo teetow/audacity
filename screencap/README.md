@@ -4,6 +4,19 @@ Audacity 4 built for capturing tutorial frames: upstream `master` plus fixes tha
 
 Branch `screencap`, worktree `D:\projects\code\audacity.worktrees\screencap`. Not upstreamed for now; rebased on `origin/master` every morning. Commits follow Conventional Commits so any of them can become a PR later.
 
+## Screencap mode
+
+Run `Audacity4.exe -F` with the environment variable `MUSE_SCREENCAP` set (any value). `-F` starts from factory settings, so every run looks the same. `MUSE_SCREENCAP`:
+
+- never activates the app's windows (Windows): launching, dialogs and popups don't take the focus. That instance can't be typed into; drive it through UI Automation.
+- keeps popups (menus, flyouts) open while the app has no focus. A press outside still closes them.
+- shows the release UI on development builds (dev mode off: no DevTools tab, no Diagnostics menu).
+- doesn't check for updates, so repeated runs send no update-check requests.
+
+Without the variable the build behaves like upstream, plus the accessibility fixes.
+
+The driver that uses all this lives in the Audacity-Plan repo (`tools/tutorials/au4/`).
+
 ## Patches to the framework
 
 Fixes to the MuseScore framework live in `muse/`, a submodule. They are commits on a local `screencap` branch inside `muse/` (the PR-able form) and are carried here as `patches/muse/*.patch`, exported with `git format-patch`, so the commit messages travel with them. Rebasing this branch then never conflicts on the submodule pointer.
