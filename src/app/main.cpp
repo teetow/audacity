@@ -55,13 +55,16 @@ static void crashCallback(int signum)
 
 #if (defined (_MSCVER) || defined (_MSC_VER))
 //! Screen capture rigs drive the app in the background while someone keeps
-//! working at the same desktop. Under MUSE_SCREENCAP the app never activates
-//! its own windows (launch, dialogs, popups), so it can't steal focus.
-//! Side effect: that instance can't be typed into.
+//! working at the same desktop. Under MUSE_SCREENCAP the app doesn't activate
+//! its own windows (launch, dialogs, popups), so it can't steal focus. A
+//! mouse click on one of its windows still activates it.
 static LRESULT CALLBACK screencapNoActivateProc(int code, WPARAM wParam, LPARAM lParam)
 {
     if (code == HCBT_ACTIVATE) {
-        return 1; // refuse activation
+        const CBTACTIVATESTRUCT* activate = reinterpret_cast<const CBTACTIVATESTRUCT*>(lParam);
+        if (!activate || !activate->fMouse) {
+            return 1; // refuse activation that isn't the user clicking
+        }
     }
     return CallNextHookEx(nullptr, code, wParam, lParam);
 }
