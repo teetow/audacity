@@ -251,6 +251,9 @@ Item {
             RecordLevel {
                 property var itemData: null
 
+                //! NOTE Named by its item id like the other toolbar items (it has no text)
+                navigation.name: Boolean(itemData) ? itemData.id : ""
+
                 width: 28
                 height: width
 
