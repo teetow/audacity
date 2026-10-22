@@ -17,6 +17,7 @@
 #include "project/types/projecttypes.h"
 
 #include "commandlineparser.h"
+#include "screencapmode.h"
 
 #ifdef MUSE_MODULE_TESTFLOW
 #include "testflowrunner.h"
@@ -80,6 +81,7 @@ void GuiApp::doStartupScenario(const muse::modularity::ContextPtr& ctxId)
 #ifdef MUSE_MODULE_TESTFLOW
     TestflowRunner::prepare(ctxId, options->testflow);
 #endif
+    screencap::prepareStartup(ctxId);
 
     auto startupScenario = muse::modularity::ioc(ctxId)->resolve<IStartupScenario>("app");
     IF_ASSERT_FAILED(startupScenario) {
