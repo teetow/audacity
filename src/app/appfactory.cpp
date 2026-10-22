@@ -4,6 +4,7 @@
 #include "appfactory.h"
 
 #include "screencapmode.h"
+#include "screencap/screencapmodule.h"
 
 #include "guiapp.h"
 #include "pluginregistrationapp.h"
@@ -202,6 +203,9 @@ std::shared_ptr<muse::IApplication> AppFactory::newGuiApp(const std::shared_ptr<
     app->addModule(new au::effects::BuiltinEffectsModule());
     app->addModule(new au::effects::BuiltinEffectsCollectionModule());
     app->addModule(new au::automation::AutomationModule());
+    if (screencap::isEnabled()) {
+        app->addModule(new au::screencap::ScreencapModule());
+    }
 
     return app;
 }

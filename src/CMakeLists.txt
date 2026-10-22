@@ -71,6 +71,9 @@ add_subdirectory(importexport)
 
 add_subdirectory(uicomponents)
 
+# Capture-rig commands, registered in screencap mode only
+add_subdirectory(screencap)
+
 # Stubs
 add_subdirectory(stubs)
 
