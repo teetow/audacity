@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Johan Althoff <teetow@gmail.com>
+Date: Thu, 22 Oct 2026 11:23:38 +0200
+Subject: [PATCH] fix(rcontrol): don't answer through a connection that has
+ gone
+
+The answer callback captured the connection's `this`. A command that
+answers later (one that waits for something in the app) would write
+through a deleted connection if the client disconnected meanwhile. Hold
+a guarded pointer and drop the answer when the client has left.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ framework/rcontrol/mcp/transport/tcptransport.cpp | 13 +++++++++----
+ 1 file changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/framework/rcontrol/mcp/transport/tcptransport.cpp b/framework/rcontrol/mcp/transport/tcptransport.cpp
+index d51a6b015..436205e3e 100644
+--- a/framework/rcontrol/mcp/transport/tcptransport.cpp
++++ b/framework/rcontrol/mcp/transport/tcptransport.cpp
+@@ -64,12 +64,17 @@ void TcpConnection::processMessage(const QByteArray& request)
+ 
+     if (m_onRequest) {
+         ByteArray req = ByteArray::fromQByteArrayNoCopy(request);
+-        m_onRequest(req, [this](const ByteArray& response) {
++        //! NOTE A command can answer later; the client may have left by then
++        m_onRequest(req, [self = QPointer<TcpConnection>(this)](const ByteArray& response) {
++            if (!self) {
++                LOGW() << "client disconnected before the answer was ready";
++                return;
++            }
+             QByteArray resp = response.toQByteArrayNoCopy();
+             LOGD() << "response: " << resp;
+-            m_socket->write(resp);
+-            m_socket->write("\n");
+-            m_socket->flush();
++            self->m_socket->write(resp);
++            self->m_socket->write("\n");
++            self->m_socket->flush();
+         });
+     } else {
+         LOGE() << "No onResponse handler";
