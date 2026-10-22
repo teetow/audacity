@@ -3,6 +3,8 @@
  */
 #include "appfactory.h"
 
+#include "screencapmode.h"
+
 #include "guiapp.h"
 #include "pluginregistrationapp.h"
 
@@ -94,6 +96,10 @@
 #include "testflow/testflowmodule.h"
 #endif
 
+#ifdef MUSE_MODULE_RCONTROL
+#include "framework/rcontrol/rcontrolmodule.h"
+#endif
+
 #ifdef MUSE_MODULE_EXTENSIONS
 #include "framework/extensions/extensionsmodule.h"
 #include "extensions/audacityextensionsmodule.h"
@@ -158,6 +164,13 @@ std::shared_ptr<muse::IApplication> AppFactory::newGuiApp(const std::shared_ptr<
     app->addModule(new muse::extensions::ExtensionsModule());
 #ifdef MUSE_MODULE_TESTFLOW
     app->addModule(new muse::testflow::TestflowModule());
+#endif
+#ifdef MUSE_MODULE_RCONTROL
+    //! NOTE Remote control (an MCP server on localhost) only in screencap mode,
+    //! started once the app is ready (see GuiApp::doStartupScenario)
+    if (screencap::isEnabled()) {
+        app->addModule(new muse::rcontrol::RControlModule(/*autoStart*/ false));
+    }
 #endif
 
     // Audacity modules

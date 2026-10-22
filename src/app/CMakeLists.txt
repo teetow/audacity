@@ -111,6 +111,7 @@ list(REMOVE_ITEM LINK_LIB
 add_to_link_if_exists(muse::accessibility)
 add_to_link_if_exists(muse::actions)
 add_to_link_if_exists(muse::rcommand)
+add_to_link_if_exists(muse::rcontrol)
 add_to_link_if_exists(muse::audioplugins)
 add_to_link_if_exists(muse::cloud_qml)
 add_to_link_if_exists(muse::cloud)
