@@ -113,6 +113,7 @@ void GuiApp::doStartupScenario(const muse::modularity::ContextPtr& ctxId)
             m_splashScreen = nullptr;
         }
         startupScenario->runAfterSplashScreen();
+        screencap::startRemoteControl(ctxId);
 
 #ifdef MUSE_MODULE_TESTFLOW
         TestflowRunner::runIfRequested(ctxId, options->testflow);

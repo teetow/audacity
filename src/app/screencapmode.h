@@ -17,4 +17,8 @@ void installNoActivate();
 //! Before the startup scenario: start empty, without startup dialogs, and skip
 //! the plugin validation question.
 void prepareStartup(const muse::modularity::ContextPtr& ctx);
+
+//! Once the startup scenario has run: open the remote-control channel, so a
+//! client that connects knows the app is ready.
+void startRemoteControl(const muse::modularity::ContextPtr& ctx);
 }

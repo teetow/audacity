@@ -5,8 +5,14 @@
 
 #include <QtGlobal>
 
+#include "muse_framework_config.h"
+
 #include "appshell/testflowstartup.h"
 #include "effects/effects_base/ieffectsproviderinitializer.h"
+
+#ifdef MUSE_MODULE_RCONTROL
+#include "framework/rcontrol/iremotecontrol.h"
+#endif
 
 #if (defined (_MSCVER) || defined (_MSC_VER))
 #include <windows.h>
@@ -58,4 +64,23 @@ void screencap::prepareStartup(const muse::modularity::ContextPtr& ctx)
         return;
     }
     effectsInitializer->setStartupPluginValidationPolicy(au::effects::StartupPluginValidationPolicy::Skip);
+}
+
+void screencap::startRemoteControl(const muse::modularity::ContextPtr& ctx)
+{
+    if (!isEnabled()) {
+        return;
+    }
+
+#ifdef MUSE_MODULE_RCONTROL
+    auto remoteControl = muse::modularity::ioc(ctx)->resolve<muse::rcontrol::IRemoteControl>("app");
+    IF_ASSERT_FAILED(remoteControl) {
+        return;
+    }
+    if (!remoteControl->start()) {
+        LOGE() << "screencap: remote control failed to start";
+    }
+#else
+    LOGE() << "screencap: built without the remote-control module";
+#endif
 }
