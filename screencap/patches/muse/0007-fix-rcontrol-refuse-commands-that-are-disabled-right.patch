@@ -1,0 +1,57 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Johan Althoff <teetow@gmail.com>
+Date: Thu, 22 Oct 2026 11:14:55 +0200
+Subject: [PATCH] fix(rcontrol): refuse commands that are disabled right now
+
+The server ran any command whenever it was called. A command the UI
+would show disabled, such as adding a track before a project is open,
+could then crash the app. Check the command's state first, the same
+rule as menus and buttons, and answer with an error instead.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ framework/rcontrol/mcp/mcpcontroller.cpp | 10 ++++++++++
+ framework/rcontrol/mcp/mcpcontroller.h   |  2 ++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/framework/rcontrol/mcp/mcpcontroller.cpp b/framework/rcontrol/mcp/mcpcontroller.cpp
+index f4683e9cc..251f61a04 100644
+--- a/framework/rcontrol/mcp/mcpcontroller.cpp
++++ b/framework/rcontrol/mcp/mcpcontroller.cpp
+@@ -195,6 +195,16 @@ void McpController::init()
+             return;
+         }
+ 
++        //! NOTE Same rule as the UI: a command that is disabled right now (no project,
++        //! wrong selection, ...) is refused, not run
++        if (!commandsState()->commandState(info->command).enabled) {
++            ToolResult unavailable;
++            unavailable.isError = true;
++            unavailable.text = "not available now: " + name;
++            onResult(unavailable);
++            return;
++        }
++
+         Params params;
+         Ret ret = toParams(*info, args, params);
+         if (!ret) {
+diff --git a/framework/rcontrol/mcp/mcpcontroller.h b/framework/rcontrol/mcp/mcpcontroller.h
+index ab744b9af..f1ea35302 100644
+--- a/framework/rcontrol/mcp/mcpcontroller.h
++++ b/framework/rcontrol/mcp/mcpcontroller.h
+@@ -27,6 +27,7 @@
+ #include "global/iapplication.h"
+ #include "rcommand/icommanddispatcher.h"
+ #include "rcommand/icommandsregister.h"
++#include "rcommand/icommandsstate.h"
+ 
+ #include "mcptypes.h"
+ 
+@@ -37,6 +38,7 @@ class McpController : public Contextable, public async::Asyncable
+     GlobalInject<IApplication> application;
+     GlobalInject<rcommand::ICommandsRegister> commandsRegister;
+     ContextInject<rcommand::ICommandDispatcher> commandsDispatcher = { this };
++    ContextInject<rcommand::ICommandsState> commandsState = { this };
+ 
+ public:
+     McpController(const modularity::ContextPtr& iocCtx);
