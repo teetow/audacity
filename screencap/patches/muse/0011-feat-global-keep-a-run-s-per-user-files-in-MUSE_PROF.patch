@@ -1,0 +1,159 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Johan Althoff <teetow@gmail.com>
+Date: Thu, 22 Oct 2026 11:20:59 +0200
+Subject: [PATCH] feat(global): keep a run's per-user files in MUSE_PROFILE_DIR
+
+Test and capture runs need a profile of their own: shared with the
+user's, they change each other's settings and leave autosaves and
+session state behind. -F (factory settings) wipes the user's profile
+instead. The only redirect so far was the compile-time WIN_PORTABLE.
+
+With MUSE_PROFILE_DIR set, the settings file, app data and config go
+under <dir>/roaming and <dir>/local, and the user data folder under
+<dir>/documents. Without it nothing changes.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ framework/global/CMakeLists.txt               |  1 +
+ .../global/internal/globalconfiguration.cpp   | 12 +++++-
+ framework/global/internal/profiledir.h        | 38 +++++++++++++++++++
+ framework/global/settings.cpp                 | 11 +++++-
+ 4 files changed, 59 insertions(+), 3 deletions(-)
+ create mode 100644 framework/global/internal/profiledir.h
+
+diff --git a/framework/global/CMakeLists.txt b/framework/global/CMakeLists.txt
+index 40c0c710c..461ab6b3b 100644
+--- a/framework/global/CMakeLists.txt
++++ b/framework/global/CMakeLists.txt
+@@ -181,6 +181,7 @@ else()
+         globalmodule.h
+         settings.cpp
+         settings.h
++        internal/profiledir.h
+ 
+         api/apitypes.h
+         api/iapiregister.h
+diff --git a/framework/global/internal/globalconfiguration.cpp b/framework/global/internal/globalconfiguration.cpp
+index 614e3db2c..86169f4e1 100644
+--- a/framework/global/internal/globalconfiguration.cpp
++++ b/framework/global/internal/globalconfiguration.cpp
+@@ -20,6 +20,7 @@
+  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+  */
+ #include "globalconfiguration.h"
++#include "profiledir.h"
+ 
+ #include <QString>
+ #include <QStandardPaths>
+@@ -133,6 +134,10 @@ io::path_t GlobalConfiguration::fromBundledPath(const io::path_t& path) const
+ 
+ io::path_t GlobalConfiguration::appConfigPath() const
+ {
++    const QString profileConfig = profileSubdir("local");
++    if (!profileConfig.isEmpty()) {
++        return profileConfig;
++    }
+     return QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
+ }
+ 
+@@ -151,7 +156,8 @@ QString GlobalConfiguration::resolveUserAppDataPath() const
+ #elif defined(Q_OS_WASM)
+     return QString("/files/data");
+ #else
+-    return QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
++    const QString profileData = profileSubdir("local");
++    return profileData.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) : profileData;
+ #endif
+ }
+ 
+@@ -162,7 +168,9 @@ io::path_t GlobalConfiguration::userBackupPath() const
+ 
+ io::path_t GlobalConfiguration::userDataPath() const
+ {
+-    static io::path_t p = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/" + QCoreApplication::applicationName();
++    static io::path_t p = profileSubdir("documents").isEmpty()
++                          ? QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/" + QCoreApplication::applicationName()
++                          : profileSubdir("documents");
+     return p;
+ }
+ 
+diff --git a/framework/global/internal/profiledir.h b/framework/global/internal/profiledir.h
+new file mode 100644
+index 000000000..2535e748a
+--- /dev/null
++++ b/framework/global/internal/profiledir.h
+@@ -0,0 +1,38 @@
++/*
++ * SPDX-License-Identifier: GPL-3.0-only
++ * MuseScore-CLA-applies
++ *
++ * MuseScore Studio
++ * Music Composition & Notation
++ *
++ * Copyright (C) 2025 MuseScore Limited and others
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 3 as
++ * published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++
++#include <QDir>
++#include <QString>
++
++namespace muse {
++//! MUSE_PROFILE_DIR keeps every per-user file of a run in one folder, for
++//! example a test or capture run that must not share state with the user:
++//! <dir>/roaming (settings), <dir>/local (app data), <dir>/documents (user data).
++//! Returns an empty string when the variable isn't set.
++inline QString profileSubdir(const char* sub)
++{
++    const QString dir = qEnvironmentVariable("MUSE_PROFILE_DIR");
++    return dir.isEmpty() ? QString() : QDir::cleanPath(dir + "/" + sub);
++}
++}
+diff --git a/framework/global/settings.cpp b/framework/global/settings.cpp
+index d41000df0..4c47c0ad5 100644
+--- a/framework/global/settings.cpp
++++ b/framework/global/settings.cpp
+@@ -21,6 +21,7 @@
+  */
+ 
+ #include "settings.h"
++#include "internal/profiledir.h"
+ 
+ #include <QDateTime>
+ #include <QSettings>
+@@ -57,6 +58,13 @@ Settings::Settings()
+     QSettings::setDefaultFormat(QSettings::IniFormat);
+ #endif
+ 
++    const QString profileSettings = profileSubdir("roaming");
++    if (!profileSettings.isEmpty()) {
++        QSettings::setDefaultFormat(QSettings::IniFormat);
++        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, profileSettings);
++        QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, profileSettings);
++    }
++
+     m_settings = new QSettings();
+ }
+ 
+@@ -244,7 +252,8 @@ QString Settings::dataPath() const
+ #ifdef WIN_PORTABLE
+     return QDir::cleanPath(QString("%1/../../../Data/settings").arg(QCoreApplication::applicationDirPath()));
+ #else
+-    return QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
++    const QString profileData = profileSubdir("local");
++    return profileData.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) : profileData;
+ #endif
+ }
+ 
