@@ -10,6 +10,7 @@
 
 #include "appfactory.h"
 #include "commandlineparser.h"
+#include "screencapmode.h"
 #include "log.h"
 
 #include "framework/multiwindows/singleinstance.h"
@@ -53,30 +54,6 @@ static void crashCallback(int signum)
 #include "winleaktracker.h"
 #endif
 
-#if (defined (_MSCVER) || defined (_MSC_VER))
-//! Screen capture rigs drive the app in the background while someone keeps
-//! working at the same desktop. Under MUSE_SCREENCAP the app doesn't activate
-//! its own windows (launch, dialogs, popups), so it can't steal focus. A
-//! mouse click on one of its windows still activates it.
-static LRESULT CALLBACK screencapNoActivateProc(int code, WPARAM wParam, LPARAM lParam)
-{
-    if (code == HCBT_ACTIVATE) {
-        const CBTACTIVATESTRUCT* activate = reinterpret_cast<const CBTACTIVATESTRUCT*>(lParam);
-        if (!activate || !activate->fMouse) {
-            return 1; // refuse activation that isn't the user clicking
-        }
-    }
-    return CallNextHookEx(nullptr, code, wParam, lParam);
-}
-
-static void installScreencapNoActivate()
-{
-    if (qEnvironmentVariableIsSet("MUSE_SCREENCAP")) {
-        SetWindowsHookExW(WH_CBT, screencapNoActivateProc, nullptr, GetCurrentThreadId());
-    }
-}
-
-#endif
 
 int main(int argc, char** argv)
 {
@@ -229,9 +206,7 @@ int main(int argc, char** argv)
         QApplication* guiApp = new QApplication(argcFinal, argvFinal);
         guiApp->setQuitOnLastWindowClosed(false);
         qApplication = guiApp;
-#if (defined (_MSCVER) || defined (_MSC_VER))
-        installScreencapNoActivate();
-#endif
+        au::app::screencap::installNoActivate();
     }
 
     commandLineParser.processBuiltinArgs(*qApplication);
