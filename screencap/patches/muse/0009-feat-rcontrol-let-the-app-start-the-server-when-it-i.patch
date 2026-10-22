@@ -1,0 +1,271 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Johan Althoff <teetow@gmail.com>
+Date: Thu, 22 Oct 2026 11:14:56 +0200
+Subject: [PATCH] feat(rcontrol): let the app start the server when it is ready
+
+The server started during module init, before the app could handle
+commands. RControlModule(autoStart = false) now leaves it closed, and the
+app opens it through the new IRemoteControl interface once it is ready,
+so a client that connects knows the app is up. Starting reports failure
+(for example a port already in use). The default stays autoStart = true.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ framework/rcontrol/CMakeLists.txt        |  1 +
+ framework/rcontrol/iremotecontrol.h      | 37 ++++++++++++++++++++++++
+ framework/rcontrol/mcp/mcpcontroller.cpp | 16 +++++++---
+ framework/rcontrol/mcp/mcpcontroller.h   |  8 +++--
+ framework/rcontrol/mcp/mcpserver.cpp     |  6 ++--
+ framework/rcontrol/mcp/mcpserver.h       |  2 +-
+ framework/rcontrol/rcontrolmodule.cpp    | 10 +++++--
+ framework/rcontrol/rcontrolmodule.h      | 12 ++++++--
+ 8 files changed, 76 insertions(+), 16 deletions(-)
+ create mode 100644 framework/rcontrol/iremotecontrol.h
+
+diff --git a/framework/rcontrol/CMakeLists.txt b/framework/rcontrol/CMakeLists.txt
+index 2f399691a..0a4e6bd4a 100644
+--- a/framework/rcontrol/CMakeLists.txt
++++ b/framework/rcontrol/CMakeLists.txt
+@@ -23,6 +23,7 @@ target_link_libraries(muse_rcontrol PRIVATE Qt::Network)
+ target_sources(muse_rcontrol PRIVATE
+     rcontrolmodule.cpp
+     rcontrolmodule.h
++    iremotecontrol.h
+ 
+     mcp/mcpcontroller.cpp
+     mcp/mcpcontroller.h
+diff --git a/framework/rcontrol/iremotecontrol.h b/framework/rcontrol/iremotecontrol.h
+new file mode 100644
+index 000000000..81a64a51c
+--- /dev/null
++++ b/framework/rcontrol/iremotecontrol.h
+@@ -0,0 +1,37 @@
++/*
++ * SPDX-License-Identifier: GPL-3.0-only
++ * MuseScore/Audacity CLA applies
++ *
++ * Copyright (C) 2026 MuseScore/Audacity and others
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 3 as
++ * published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++
++#include "modularity/imoduleinterface.h"
++
++namespace muse::rcontrol {
++//! Starts and stops the remote-control server. An app that creates the module
++//! without auto-start uses this to open the channel once it is ready.
++class IRemoteControl : MODULE_CONTEXT_INTERFACE
++{
++    INTERFACE_ID(IRemoteControl)
++
++public:
++    virtual ~IRemoteControl() = default;
++
++    virtual bool start() = 0;
++    virtual void stop() = 0;
++};
++}
+diff --git a/framework/rcontrol/mcp/mcpcontroller.cpp b/framework/rcontrol/mcp/mcpcontroller.cpp
+index 251f61a04..a02765e31 100644
+--- a/framework/rcontrol/mcp/mcpcontroller.cpp
++++ b/framework/rcontrol/mcp/mcpcontroller.cpp
+@@ -39,7 +39,7 @@ McpController::McpController(const modularity::ContextPtr& iocCtx)
+ 
+ McpController::~McpController()
+ {
+-    deinit();
++    stop();
+ }
+ 
+ //! NOTE MCP tool names: letters, digits, '_' and '-', at most 64 characters.
+@@ -171,8 +171,12 @@ static ToolResult toToolResult(const Response& response)
+     return result;
+ }
+ 
+-void McpController::init()
++bool McpController::start()
+ {
++    if (m_mcpServer) {
++        return true;
++    }
++
+     m_mcpServer = std::make_unique<McpServer>(application()->version().toStdString());
+ 
+     m_mcpServer->onToolsListRequest([this](const McpServer::ToolsListResultHandler& onResult) {
+@@ -218,10 +222,14 @@ void McpController::init()
+         });
+     });
+ 
+-    m_mcpServer->init();
++    if (!m_mcpServer->init()) {
++        m_mcpServer = nullptr;
++        return false;
++    }
++    return true;
+ }
+ 
+-void McpController::deinit()
++void McpController::stop()
+ {
+     if (m_mcpServer) {
+         m_mcpServer->deinit();
+diff --git a/framework/rcontrol/mcp/mcpcontroller.h b/framework/rcontrol/mcp/mcpcontroller.h
+index f1ea35302..8ad83958b 100644
+--- a/framework/rcontrol/mcp/mcpcontroller.h
++++ b/framework/rcontrol/mcp/mcpcontroller.h
+@@ -29,11 +29,13 @@
+ #include "rcommand/icommandsregister.h"
+ #include "rcommand/icommandsstate.h"
+ 
++#include "../iremotecontrol.h"
++
+ #include "mcptypes.h"
+ 
+ namespace muse::rcontrol::mcp {
+ class McpServer;
+-class McpController : public Contextable, public async::Asyncable
++class McpController : public IRemoteControl, public Contextable, public async::Asyncable
+ {
+     GlobalInject<IApplication> application;
+     GlobalInject<rcommand::ICommandsRegister> commandsRegister;
+@@ -44,8 +46,8 @@ public:
+     McpController(const modularity::ContextPtr& iocCtx);
+     ~McpController();
+ 
+-    void init();
+-    void deinit();
++    bool start() override;
++    void stop() override;
+ 
+ private:
+ 
+diff --git a/framework/rcontrol/mcp/mcpserver.cpp b/framework/rcontrol/mcp/mcpserver.cpp
+index 9ce6f86e2..9dc36f529 100644
+--- a/framework/rcontrol/mcp/mcpserver.cpp
++++ b/framework/rcontrol/mcp/mcpserver.cpp
+@@ -46,10 +46,10 @@ McpServer::~McpServer()
+     m_transport = nullptr;
+ }
+ 
+-void McpServer::init()
++bool McpServer::init()
+ {
+     IF_ASSERT_FAILED(m_transport) {
+-        return;
++        return false;
+     }
+ 
+     m_transport->onRequest([this](const ByteArray& request, const ITransport::ResponseHandler& onResponse) {
+@@ -60,7 +60,7 @@ void McpServer::init()
+         });
+     });
+ 
+-    m_transport->start();
++    return m_transport->start();
+ }
+ 
+ void McpServer::deinit()
+diff --git a/framework/rcontrol/mcp/mcpserver.h b/framework/rcontrol/mcp/mcpserver.h
+index 2f63fe777..57d78b064 100644
+--- a/framework/rcontrol/mcp/mcpserver.h
++++ b/framework/rcontrol/mcp/mcpserver.h
+@@ -35,7 +35,7 @@ public:
+     McpServer(const std::string& version, ITransport* transport = nullptr);
+     ~McpServer();
+ 
+-    void init();
++    bool init();
+     void deinit();
+ 
+     using ToolsListResultHandler = std::function<void (std::vector<Tool>)>;
+diff --git a/framework/rcontrol/rcontrolmodule.cpp b/framework/rcontrol/rcontrolmodule.cpp
+index cf6b79058..58f918060 100644
+--- a/framework/rcontrol/rcontrolmodule.cpp
++++ b/framework/rcontrol/rcontrolmodule.cpp
+@@ -19,6 +19,7 @@
+ 
+ #include "rcontrolmodule.h"
+ 
++#include "iremotecontrol.h"
+ #include "mcp/mcpcontroller.h"
+ 
+ using namespace muse;
+@@ -33,12 +34,13 @@ std::string RControlModule::moduleName() const
+ 
+ modularity::IContextSetup* RControlModule::newContext(const muse::modularity::ContextPtr& ctx) const
+ {
+-    return new RControlContext(ctx);
++    return new RControlContext(ctx, m_autoStart);
+ }
+ 
+ void RControlContext::registerExports()
+ {
+     m_mcpController = std::make_shared<mcp::McpController>(iocContext());
++    ioc()->registerExport<IRemoteControl>(mname, m_mcpController);
+ }
+ 
+ void RControlContext::onInit(const IApplication::RunMode& mode)
+@@ -47,10 +49,12 @@ void RControlContext::onInit(const IApplication::RunMode& mode)
+         return;
+     }
+ 
+-    m_mcpController->init();
++    if (m_autoStart) {
++        m_mcpController->start();
++    }
+ }
+ 
+ void RControlContext::onDeinit()
+ {
+-    m_mcpController->deinit();
++    m_mcpController->stop();
+ }
+diff --git a/framework/rcontrol/rcontrolmodule.h b/framework/rcontrol/rcontrolmodule.h
+index 12b2774c5..5d79aaf1e 100644
+--- a/framework/rcontrol/rcontrolmodule.h
++++ b/framework/rcontrol/rcontrolmodule.h
+@@ -30,22 +30,30 @@ namespace muse::rcontrol {
+ class RControlModule : public modularity::IModuleSetup
+ {
+ public:
++    //! autoStart: start the server on init; otherwise the app starts it through IRemoteControl when it is ready
++    explicit RControlModule(bool autoStart = true)
++        : m_autoStart(autoStart) {}
++
+     std::string moduleName() const override;
+ 
+     modularity::IContextSetup* newContext(const muse::modularity::ContextPtr& ctx) const override;
++
++private:
++    bool m_autoStart = true;
+ };
+ 
+ class RControlContext : public modularity::IContextSetup
+ {
+ public:
+-    RControlContext(const muse::modularity::ContextPtr& ctx)
+-        : modularity::IContextSetup(ctx) {}
++    RControlContext(const muse::modularity::ContextPtr& ctx, bool autoStart)
++        : modularity::IContextSetup(ctx), m_autoStart(autoStart) {}
+ 
+     void registerExports() override;
+     void onInit(const IApplication::RunMode& mode) override;
+     void onDeinit() override;
+ 
+ private:
++    bool m_autoStart = true;
+     std::shared_ptr<mcp::McpController> m_mcpController;
+ };
+ }
