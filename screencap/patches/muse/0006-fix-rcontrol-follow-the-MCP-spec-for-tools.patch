@@ -1,0 +1,375 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Johan Althoff <teetow@gmail.com>
+Date: Thu, 22 Oct 2026 11:14:55 +0200
+Subject: [PATCH] fix(rcontrol): follow the MCP spec for tools
+
+- tools/list put each argument straight into the input schema object;
+  arguments go under "properties", and the commands' own input schemas
+  were never listed.
+- tools/call ignored the arguments and answered before the command had
+  run, always with empty content. Arguments are now converted to the
+  types the command declares, and the answer is sent when the command's
+  promise resolves, with its message and, when the command returns a
+  Val, its data as structuredContent. Failures set isError.
+- Tool names only had their first '/' replaced and could carry any
+  character of an effect's plugin id; they are now MCP-valid
+  ([A-Za-z0-9_-], at most 64 characters, long paths shortened with a
+  hash), and calls look the command up by name instead of rebuilding a
+  path from it, which broke commands containing '_'.
+- Only commands available over MCP are listed and callable.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ framework/rcontrol/mcp/mcpcontroller.cpp | 198 ++++++++++++++++++++---
+ framework/rcontrol/mcp/mcpcontroller.h   |   5 +-
+ framework/rcontrol/mcp/mcpserver.cpp     |  26 ++-
+ framework/rcontrol/mcp/mcptypes.h        |   2 +
+ 4 files changed, 200 insertions(+), 31 deletions(-)
+
+diff --git a/framework/rcontrol/mcp/mcpcontroller.cpp b/framework/rcontrol/mcp/mcpcontroller.cpp
+index 7a7848fcf..f4683e9cc 100644
+--- a/framework/rcontrol/mcp/mcpcontroller.cpp
++++ b/framework/rcontrol/mcp/mcpcontroller.cpp
+@@ -21,12 +21,14 @@
+ 
+ #include "mcpserver.h"
+ 
+-#include "global/stringutils.h"
++#include <cstdio>
++
+ #include "global/serialization/json.h"
+ 
+ #include "log.h"
+ #include "thirdparty/kors_logger/src/log_base.h"
+ 
++using namespace muse;
+ using namespace muse::rcontrol::mcp;
+ using namespace muse::rcommand;
+ 
+@@ -40,25 +42,133 @@ McpController::~McpController()
+     deinit();
+ }
+ 
+-//! NOTE The tool name must be in the format: group_name
++//! NOTE MCP tool names: letters, digits, '_' and '-', at most 64 characters.
++//! "trackedit/clip/change-color" becomes "trackedit_clip_change-color"; a longer
++//! path (effects carry a plugin id) keeps a readable prefix and a hash of the
++//! whole path, so names stay unique.
+ static std::string commandToToolName(const Command& command)
+ {
+-    std::string path = command.path();
+-    muse::strings::replace(path, "/", "_");
+-    return path;
++    static constexpr size_t MAX_LEN = 64;
++    static constexpr size_t HASH_LEN = 8;
++
++    const std::string& path = command.path();
++    std::string name;
++    name.reserve(path.size());
++    for (char c : path) {
++        const bool allowed = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-';
++        name += allowed ? c : '_';
++    }
++
++    if (name.size() > MAX_LEN) {
++        uint32_t hash = 2166136261u; // FNV-1a over the original path
++        for (unsigned char c : path) {
++            hash = (hash ^ c) * 16777619u;
++        }
++        char hex[HASH_LEN + 1];
++        std::snprintf(hex, sizeof(hex), "%08x", hash);
++        name = name.substr(0, MAX_LEN - HASH_LEN - 1) + "_" + hex;
++    }
++    return name;
+ }
+ 
+-static CommandQuery commandQuery(const std::string& name, const muse::JsonObject& args)
++static mcp::DataType toMcpType(rcommand::DataType type)
+ {
+-    UNUSED(args); // TODO: implement
+-    std::string path = name;
+-    muse::strings::replace(path, "_", "/");
+-    Command cmd(std::string(COMMAND_SCHEME), path);
+-    CommandQuery q(cmd);
+-    // for (const auto& arg : args) {
+-    //     q.set(arg.first, arg.second.toString());
+-    // }
+-    return q;
++    switch (type) {
++    case rcommand::DataType::String: return mcp::DataType::String;
++    case rcommand::DataType::Integer: return mcp::DataType::Integer;
++    case rcommand::DataType::Float: return mcp::DataType::Float;
++    case rcommand::DataType::Boolean: return mcp::DataType::Boolean;
++    case rcommand::DataType::Object: return mcp::DataType::Object;
++    case rcommand::DataType::Array: return mcp::DataType::Array;
++    case rcommand::DataType::Null: return mcp::DataType::Null;
++    case rcommand::DataType::Undefined: break;
++    }
++    return mcp::DataType::Undefined;
++}
++
++static muse::JsonValue toJson(const muse::Val& val)
++{
++    switch (val.type()) {
++    case muse::Val::Type::Undefined: return muse::JsonValue();
++    case muse::Val::Type::Bool: return muse::JsonValue(val.toBool());
++    case muse::Val::Type::Int: return muse::JsonValue(val.toInt());
++    case muse::Val::Type::Int64:
++    case muse::Val::Type::Double: return muse::JsonValue(val.toDouble());
++    case muse::Val::Type::String: return muse::JsonValue(val.toString());
++    case muse::Val::Type::List: {
++        muse::JsonArray arr;
++        for (const muse::Val& v : val.toList()) {
++            arr << toJson(v);
++        }
++        muse::JsonValue jv;
++        jv = arr;
++        return jv;
++    }
++    case muse::Val::Type::Map: {
++        muse::JsonObject obj;
++        for (const auto& [key, v] : val.toMap()) {
++            obj.set(key, toJson(v));
++        }
++        muse::JsonValue jv;
++        jv = obj;
++        return jv;
++    }
++#ifndef NO_QT_SUPPORT
++    case muse::Val::Type::Color: return muse::JsonValue(val.toString());
++#endif
++    }
++    return muse::JsonValue();
++}
++
++//! NOTE Arguments arrive as JSON; the command declares the type it expects for each.
++static Ret toParams(const CommandInfo& info, const muse::JsonObject& args, Params& params)
++{
++    for (const std::string& key : args.keys()) {
++        auto it = info.inputSchema.args.find(key);
++        if (it == info.inputSchema.args.end()) {
++            return make_ret(Ret::Code::BadArgs, "unknown argument: " + key);
++        }
++
++        const muse::JsonValue v = args.value(key);
++        switch (it->second.type) {
++        case rcommand::DataType::String:
++            params[key] = muse::Val(v.toStdString());
++            break;
++        case rcommand::DataType::Integer:
++            params[key] = muse::Val(v.toInt());
++            break;
++        case rcommand::DataType::Float:
++            params[key] = muse::Val(v.toDouble());
++            break;
++        case rcommand::DataType::Boolean:
++            params[key] = muse::Val(v.toBool());
++            break;
++        default:
++            return make_ret(Ret::Code::BadArgs, "argument of unsupported type: " + key);
++        }
++    }
++    return make_ok();
++}
++
++static ToolResult toToolResult(const Response& response)
++{
++    ToolResult result;
++    result.isError = !response.ret;
++    result.text = response.ret.text();
++    if (result.isError && result.text.empty()) {
++        result.text = "failed with code " + std::to_string(response.ret.code());
++    }
++
++    //! NOTE Commands that return data put a Val in Response::data
++    if (response.data.has_value() && response.data.type() == typeid(muse::Val)) {
++        const muse::JsonValue json = toJson(std::any_cast<muse::Val>(response.data));
++        if (json.isObject()) {
++            result.structuredContent = json;
++            const ByteArray ba = JsonDocument(json.toObject()).toJson(JsonDocument::Format::Compact);
++            result.text = std::string(ba.constChar(), ba.size());
++        }
++    }
++    return result;
+ }
+ 
+ void McpController::init()
+@@ -76,9 +186,26 @@ void McpController::init()
+     {
+         LOGDA() << "Tools call: " << name;
+ 
+-        commandsDispatcher()->dispatch(commandQuery(name, args));
++        const std::optional<CommandInfo> info = findCommandInfo(name);
++        if (!info) {
++            ToolResult unknown;
++            unknown.isError = true;
++            unknown.text = "unknown tool: " + name;
++            onResult(unknown);
++            return;
++        }
++
++        Params params;
++        Ret ret = toParams(*info, args, params);
++        if (!ret) {
++            onResult(toToolResult(Response { 0, ret, {} }));
++            return;
++        }
+ 
+-        onResult(ToolResult());
++        //! NOTE Answer when the command has finished, with its result
++        commandsDispatcher()->dispatch(info->command, params).onResolve(this, [onResult](const Response& response) {
++            onResult(toToolResult(response));
++        });
+     });
+ 
+     m_mcpServer->init();
+@@ -92,25 +219,44 @@ void McpController::deinit()
+     }
+ }
+ 
++std::optional<CommandInfo> McpController::findCommandInfo(const std::string& toolName) const
++{
++    //! NOTE Look the command up by its tool name: turning '_' back into '/' would
++    //! break every command whose path contains an underscore.
++    for (const CommandInfo& info : commandsRegister()->commandInfoList()) {
++        if (info.availabilities.testFlag(Availability::MCP) && commandToToolName(info.command) == toolName) {
++            return info;
++        }
++    }
++    return std::nullopt;
++}
++
+ std::vector<Tool> McpController::makeToolsList() const
+ {
+     std::vector<Tool> tools;
+     auto commandList = commandsRegister()->commandInfoList();
+     tools.reserve(commandList.size());
+     for (const auto& info : commandList) {
++        if (!info.availabilities.testFlag(Availability::MCP)) {
++            continue;
++        }
++
+         Tool tool;
+         tool.name = commandToToolName(info.command);
+         tool.title = info.title.raw().translated().toStdString();
+         tool.description = info.description.translated().toStdString();
+-        tool.inputSchema = InputSchema();
+-        // for (const auto& arg : info.inputSchema.args) {
+-        //     Property property;
+-        //     property.name = String::fromStdString(arg.first);
+-        //     property.type = String::fromStdString(arg.second.type);
+-        //     property.description = String::fromStdString(arg.second.description);
+-        //     property.minimum = String::fromStdString(arg.second.minimum);
+-        //     property.maximum = String::fromStdString(arg.second.maximum);
+-        // }
++        for (const auto& [name, arg] : info.inputSchema.args) {
++            Property property;
++            property.type = toMcpType(arg.type);
++            property.description = arg.description.toStdString();
++            if (!arg.min.isNull()) {
++                property.minimum = toJson(arg.min);
++            }
++            if (!arg.max.isNull()) {
++                property.maximum = toJson(arg.max);
++            }
++            tool.inputSchema.properties[name] = property;
++        }
+         tools.push_back(std::move(tool));
+     }
+     return tools;
+diff --git a/framework/rcontrol/mcp/mcpcontroller.h b/framework/rcontrol/mcp/mcpcontroller.h
+index 9d4a504b4..ab744b9af 100644
+--- a/framework/rcontrol/mcp/mcpcontroller.h
++++ b/framework/rcontrol/mcp/mcpcontroller.h
+@@ -20,7 +20,9 @@
+ #pragma once
+ 
+ #include <memory>
++#include <optional>
+ 
++#include "async/asyncable.h"
+ #include "modularity/ioc.h"
+ #include "global/iapplication.h"
+ #include "rcommand/icommanddispatcher.h"
+@@ -30,7 +32,7 @@
+ 
+ namespace muse::rcontrol::mcp {
+ class McpServer;
+-class McpController : public Contextable
++class McpController : public Contextable, public async::Asyncable
+ {
+     GlobalInject<IApplication> application;
+     GlobalInject<rcommand::ICommandsRegister> commandsRegister;
+@@ -46,6 +48,7 @@ public:
+ private:
+ 
+     std::vector<Tool> makeToolsList() const;
++    std::optional<rcommand::CommandInfo> findCommandInfo(const std::string& toolName) const;
+ 
+     std::unique_ptr<McpServer> m_mcpServer;
+ };
+diff --git a/framework/rcontrol/mcp/mcpserver.cpp b/framework/rcontrol/mcp/mcpserver.cpp
+index be870b84c..9ce6f86e2 100644
+--- a/framework/rcontrol/mcp/mcpserver.cpp
++++ b/framework/rcontrol/mcp/mcpserver.cpp
+@@ -137,17 +137,24 @@ void McpServer::onToolsList(const JsonObject& request, const std::function<void(
+             obj["title"] = tool.title;
+             obj["description"] = tool.description;
+ 
++            //! NOTE A JSON Schema object: arguments go under "properties"
+             const InputSchema& schema = tool.inputSchema;
+             JsonObject schemaObj;
+             schemaObj["type"] = schema.type;
++            JsonObject propertiesObj;
+             for (const auto& property : schema.properties) {
+                 JsonObject propertyObj;
+                 propertyObj["type"] = to_string(property.second.type);
+                 propertyObj["description"] = property.second.description;
+-                propertyObj["minimum"] = property.second.minimum.toString();
+-                propertyObj["maximum"] = property.second.maximum.toString();
+-                schemaObj[property.first] = propertyObj;
++                if (!property.second.minimum.isNull()) {
++                    propertyObj["minimum"] = property.second.minimum;
++                }
++                if (!property.second.maximum.isNull()) {
++                    propertyObj["maximum"] = property.second.maximum;
++                }
++                propertiesObj[property.first] = propertyObj;
+             }
++            schemaObj["properties"] = propertiesObj;
+             obj["inputSchema"] = schemaObj;
+ 
+             arr << obj;
+@@ -184,8 +191,19 @@ void McpServer::onToolsCall(const JsonObject& request, const std::function<void(
+         response["jsonrpc"] = "2.0";
+         response["id"] = id;
+ 
++        JsonArray content;
++        if (!toolResult.text.empty()) {
++            JsonObject textItem;
++            textItem["type"] = "text";
++            textItem["text"] = toolResult.text;
++            content << textItem;
++        }
++
+         JsonObject resObj;
+-        resObj["content"] = JsonArray();
++        resObj["content"] = content;
++        if (toolResult.structuredContent.isObject()) {
++            resObj["structuredContent"] = toolResult.structuredContent;
++        }
+         resObj["isError"] = toolResult.isError;
+ 
+         response["result"] = resObj;
+diff --git a/framework/rcontrol/mcp/mcptypes.h b/framework/rcontrol/mcp/mcptypes.h
+index 806d9e9ef..e064584ed 100644
+--- a/framework/rcontrol/mcp/mcptypes.h
++++ b/framework/rcontrol/mcp/mcptypes.h
+@@ -71,5 +71,7 @@ struct Tool {
+ 
+ struct ToolResult {
+     bool isError = false;
++    std::string text;            // human-readable result, or the error message
++    JsonValue structuredContent; // optional structured result (an object)
+ };
+ }
