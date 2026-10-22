@@ -198,6 +198,8 @@ qt_add_executable(${EXECUTABLE_NAME}
     appfactory.h
     guiapp.cpp
     guiapp.h
+    screencapmode.cpp
+    screencapmode.h
     pluginregistrationapp.cpp
     pluginregistrationapp.h
     commandlineparser.cpp

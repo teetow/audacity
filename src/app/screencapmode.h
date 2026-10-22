@@ -1,0 +1,14 @@
+/*
+ * Audacity: A Digital Audio Editor
+ */
+#pragma once
+
+//! Screencap mode: with the environment variable MUSE_SCREENCAP set, the app runs
+//! unattended for capture rigs (see screencap/README.md in the screencap branch).
+namespace au::app::screencap {
+bool isEnabled();
+
+//! Right after the QApplication is created: on Windows, refuse window activation
+//! that isn't a mouse click, so the app never takes the focus by itself.
+void installNoActivate();
+}
