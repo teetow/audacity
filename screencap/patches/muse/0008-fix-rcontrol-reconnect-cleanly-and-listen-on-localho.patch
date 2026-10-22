@@ -1,0 +1,110 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Johan Althoff <teetow@gmail.com>
+Date: Thu, 22 Oct 2026 11:14:56 +0200
+Subject: [PATCH] fix(rcontrol): reconnect cleanly and listen on localhost only
+
+- After a client disconnected, the transport kept a dangling pointer to
+  its connection: every later client was refused as "already
+  connected", and stop() deleted the connection twice. The slot is now
+  freed as soon as the client leaves, and a refused client is closed
+  instead of being left pending.
+- The server listened on every network interface. It controls the app,
+  so it now listens on localhost only, on port 2212 or the one given in
+  MUSE_RCONTROL_PORT, and logs why when it can't.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ .../rcontrol/mcp/transport/tcptransport.cpp   | 32 +++++++++++++++----
+ .../rcontrol/mcp/transport/tcptransport.h     |  4 ++-
+ 2 files changed, 28 insertions(+), 8 deletions(-)
+
+diff --git a/framework/rcontrol/mcp/transport/tcptransport.cpp b/framework/rcontrol/mcp/transport/tcptransport.cpp
+index 08ef0b2f8..d51a6b015 100644
+--- a/framework/rcontrol/mcp/transport/tcptransport.cpp
++++ b/framework/rcontrol/mcp/transport/tcptransport.cpp
+@@ -26,7 +26,15 @@
+ 
+ #include "log.h"
+ 
+-static const int DEFAULT_PORT = 2212;
++static const quint16 DEFAULT_PORT = 2212;
++
++//! NOTE MUSE_RCONTROL_PORT overrides the port, e.g. to run several instances
++static quint16 port()
++{
++    bool ok = false;
++    const int envPort = qEnvironmentVariableIntValue("MUSE_RCONTROL_PORT", &ok);
++    return ok && envPort > 0 && envPort <= 65535 ? static_cast<quint16>(envPort) : DEFAULT_PORT;
++}
+ 
+ using namespace muse::rcontrol::mcp;
+ 
+@@ -80,21 +88,32 @@ bool TcpTransport::start()
+     if (!m_server) {
+         m_server = new QTcpServer();
+         QObject::connect(m_server, &QTcpServer::newConnection, [this]() {
++            QTcpSocket* socket = m_server->nextPendingConnection();
+             if (m_connection) {
+-                LOGE() << "Already connected";
++                LOGE() << "Already connected, refusing another client";
++                socket->disconnectFromHost();
++                socket->deleteLater();
+                 return;
+             }
+ 
+-            QTcpSocket* socket = m_server->nextPendingConnection();
+             m_connection = new TcpConnection(socket, m_onRequest);
++
++            //! NOTE Free the slot as soon as the client leaves, not when the
++            //! connection object is eventually deleted, so a client that
++            //! reconnects right away isn't refused.
++            QObject::connect(socket, &QTcpSocket::disconnected, m_server, [this]() {
++                m_connection.clear();
++            });
+         });
+     }
+ 
+-    if (!m_server->listen(QHostAddress::Any, DEFAULT_PORT)) {
++    //! NOTE Local clients only: this channel controls the app
++    if (!m_server->listen(QHostAddress::LocalHost, port())) {
++        LOGE() << "TcpTransport failed to listen on port " << port() << ": " << m_server->errorString();
+         return false;
+     }
+ 
+-    LOGI() << "TcpTransport started on port " << DEFAULT_PORT;
++    LOGI() << "TcpTransport started on localhost port " << m_server->serverPort();
+ 
+     return true;
+ }
+@@ -102,8 +121,7 @@ bool TcpTransport::start()
+ void TcpTransport::stop()
+ {
+     if (m_server) {
+-        delete m_connection;
+-        m_connection = nullptr;
++        delete m_connection.data();
+ 
+         m_server->close();
+         delete m_server;
+diff --git a/framework/rcontrol/mcp/transport/tcptransport.h b/framework/rcontrol/mcp/transport/tcptransport.h
+index 2efe5b820..1fc1d9aa8 100644
+--- a/framework/rcontrol/mcp/transport/tcptransport.h
++++ b/framework/rcontrol/mcp/transport/tcptransport.h
+@@ -20,6 +20,7 @@
+ #pragma once
+ 
+ #include <QObject>
++#include <QPointer>
+ #include <QByteArray>
+ 
+ #include "../itransport.h"
+@@ -58,7 +59,8 @@ public:
+ 
+ private:
+     QTcpServer* m_server = nullptr;
+-    TcpConnection* m_connection = nullptr;
++    //! NOTE The connection deletes itself when the client disconnects
++    QPointer<TcpConnection> m_connection;
+     RequestHandler m_onRequest = nullptr;
+ };
+ }
