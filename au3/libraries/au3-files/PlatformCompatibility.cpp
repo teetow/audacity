@@ -23,14 +23,24 @@
 #include <pwd.h>
 #endif
 
+//! NOTE MUSE_PROFILE_DIR keeps every per-user file of a run in one folder; the
+//! framework uses the same layout (<dir>/roaming, <dir>/local)
+static QString profileSubdir(const char* sub)
+{
+    const QString dir = qEnvironmentVariable("MUSE_PROFILE_DIR");
+    return dir.isEmpty() ? QString() : QDir::cleanPath(dir + "/" + sub);
+}
+
 std::string PlatformCompatibility::GetUserDataDir()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation).toStdString();
+    const QString profile = profileSubdir("roaming");
+    return (profile.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) : profile).toStdString();
 }
 
 std::string PlatformCompatibility::GetUserLocalDataDir()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation).toStdString();
+    const QString profile = profileSubdir("local");
+    return (profile.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) : profile).toStdString();
 }
 
 std::string PlatformCompatibility::GetResourcesDir()
