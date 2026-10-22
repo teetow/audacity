@@ -54,13 +54,12 @@ target_sources(appshell PRIVATE
     internal/splashscreen/newinstanceloadingscreenview.h
 )
 
-if (MUSE_MODULE_TESTFLOW)
-    target_sources(appshell PRIVATE
-        testflowstartup.h
-        internal/testflowstartupscenario.cpp
-        internal/testflowstartupscenario.h
-    )
-endif()
+# Unattended startup (start empty, no startup dialogs): used by testflow and by screencap mode
+target_sources(appshell PRIVATE
+    testflowstartup.h
+    internal/testflowstartupscenario.cpp
+    internal/testflowstartupscenario.h
+)
 
 if (OS_IS_MAC)
     target_sources(appshell PRIVATE
