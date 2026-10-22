@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Johan Althoff <teetow@gmail.com>
+Date: Thu, 22 Oct 2026 11:14:56 +0200
+Subject: [PATCH] build(rcontrol): expose MUSE_MODULE_RCONTROL in the framework
+ config
+
+Apps can then include and register the module only when it is built,
+as they do for the other optional modules.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ framework/cmake/muse_framework_config.h.in | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/framework/cmake/muse_framework_config.h.in b/framework/cmake/muse_framework_config.h.in
+index ddf609149..36d87cef1 100644
+--- a/framework/cmake/muse_framework_config.h.in
++++ b/framework/cmake/muse_framework_config.h.in
+@@ -60,6 +60,8 @@
+ 
+ #cmakedefine MUSE_MODULE_AUDIOPLUGINS 1
+ 
++#cmakedefine MUSE_MODULE_RCONTROL 1
++
+ #cmakedefine MUSE_MODULE_TESTFLOW 1
+ #cmakedefine MUSE_MODULE_TESTFLOW_TESTS 1
+ #cmakedefine MUSE_MODULE_TESTFLOW_API 1
