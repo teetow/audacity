@@ -3,6 +3,7 @@
  */
 #pragma once
 
+#include <functional>
 #include <map>
 #include <set>
 #include <vector>
@@ -59,17 +60,20 @@ private:
     Response looks(const Request& request) const;
     Response setLook(const Request& request);
     Response controls(const Request& request) const;
-    Response trigger(const Request& request);
+    void trigger(const Request& request, const OnResponse& onResponse);
     Response rect(const Request& request) const;
     void popups(const Request& request, const OnResponse& onResponse);
     Response closePopups(const Request& request);
-    Response capture(const Request& request);
+    void capture(const Request& request, const OnResponse& onResponse);
+    Response grab(const Request& request);
+    void settle(int roundsLeft, const std::function<void(bool)>& onSettled);
     void dispatch(const Request& request, const OnResponse& onResponse);
     Response setUserInput(const Request& request);
+    Response setWindow(const Request& request);
 
     muse::ui::INavigationControl* findControl(const Request& request, muse::Ret& ret) const;
     std::vector<muse::uicomponents::WindowView*> openViews() const;
-    bool anyOpenViewRendered() const;
+    bool isRendered(const std::string& popupName) const;
     muse::Val popupList() const;
     void answerPopupWaiters();
 

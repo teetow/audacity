@@ -45,7 +45,7 @@ const std::vector<CommandInfo> s_commandInfos = {
          "A control's rectangle in capture coordinates (device pixels from the main window's top-left)", CONTROL_SCHEMA),
     info(SCREENCAP_POPUPS_COMMAND, "Popups",
          "Open popups, menus and dialogs, oldest first, with their rectangles in capture coordinates",
-         InputSchema({ { "wait", Arg(DataType::Boolean, String(u"Answer once at least one is open and has drawn a frame")) } })),
+         InputSchema({ { "wait_for", stringArg(u"A popup's name: answer once it is open and has drawn a frame") } })),
     info(SCREENCAP_CLOSE_POPUPS_COMMAND, "Close popups",
          "Close every open popup, menu and dialog (a dialog closed this way is cancelled)"),
     info(SCREENCAP_CAPTURE_COMMAND, "Capture",
@@ -64,6 +64,13 @@ const std::vector<CommandInfo> s_commandInfos = {
          "Accept or ignore the user's own mouse and keyboard (ignored from startup, so they leave no marks in captures); "
          "ignoring again clears hover, but not marks the app keeps, such as the ruler's pointer line. Commands are unaffected",
          InputSchema({ { "enabled", Arg(DataType::Boolean, String(u"Whether the app reacts to the user's input")) } })),
+    info(SCREENCAP_WINDOW_COMMAND, "Window size",
+         "Size the main window (device pixels) and move it to the top-left corner of its screen, so popups never "
+         "have to move to stay on screen; fails if it doesn't fit there",
+         InputSchema({
+        { "width", Arg(DataType::Integer, String(u"Width, device pixels")) },
+        { "height", Arg(DataType::Integer, String(u"Height, device pixels")) },
+    })),
 };
 }
 

@@ -13,6 +13,8 @@
 #include <QPainter>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QScreen>
+#include <QtQuick/private/qquickwindow_p.h>
 
 #include "framework/uicomponents/qml/Muse/UiComponents/windowview.h"
 
@@ -51,15 +53,18 @@ void ScreencapController::init()
     cd->onRequest(this, SCREENCAP_LOOKS_COMMAND, [this](const Request& r) { return looks(r); });
     cd->onRequest(this, SCREENCAP_LOOK_COMMAND, [this](const Request& r) { return setLook(r); });
     cd->onRequest(this, SCREENCAP_CONTROLS_COMMAND, [this](const Request& r) { return controls(r); });
-    cd->onRequest(this, SCREENCAP_TRIGGER_COMMAND, [this](const Request& r) { return trigger(r); });
+    cd->onRequest(this, SCREENCAP_TRIGGER_COMMAND,
+                  ICommandDispatcher::AsyncCallBack([this](const Request& r, const OnResponse& on) { trigger(r, on); }));
     cd->onRequest(this, SCREENCAP_RECT_COMMAND, [this](const Request& r) { return rect(r); });
     cd->onRequest(this, SCREENCAP_POPUPS_COMMAND,
                   ICommandDispatcher::AsyncCallBack([this](const Request& r, const OnResponse& on) { popups(r, on); }));
     cd->onRequest(this, SCREENCAP_CLOSE_POPUPS_COMMAND, [this](const Request& r) { return closePopups(r); });
-    cd->onRequest(this, SCREENCAP_CAPTURE_COMMAND, [this](const Request& r) { return capture(r); });
+    cd->onRequest(this, SCREENCAP_CAPTURE_COMMAND,
+                  ICommandDispatcher::AsyncCallBack([this](const Request& r, const OnResponse& on) { capture(r, on); }));
     cd->onRequest(this, SCREENCAP_DISPATCH_COMMAND,
                   ICommandDispatcher::AsyncCallBack([this](const Request& r, const OnResponse& on) { dispatch(r, on); }));
     cd->onRequest(this, SCREENCAP_USER_INPUT_COMMAND, [this](const Request& r) { return setUserInput(r); });
+    cd->onRequest(this, SCREENCAP_WINDOW_COMMAND, [this](const Request& r) { return setWindow(r); });
 
     //! NOTE Watch every window being shown, to know when a popup has drawn its first frame
     qApp->installEventFilter(this);
@@ -177,6 +182,7 @@ ui::INavigationControl* ScreencapController::findControl(const Request& request,
     const std::string panel = param(request, "panel");
     const std::string control = param(request, "control");
 
+    std::vector<ui::INavigationControl*> found;
     for (ui::INavigationSection* s : navigation()->sections()) {
         if (s->name().toStdString() != section) {
             continue;
@@ -187,28 +193,41 @@ ui::INavigationControl* ScreencapController::findControl(const Request& request,
             }
             for (ui::INavigationControl* c : p->controls()) {
                 if (c->name().toStdString() == control) {
-                    ret = make_ok();
-                    return c;
+                    found.push_back(c);
                 }
             }
         }
     }
-    ret = error("no control " + section + " / " + panel + " / " + control);
-    return nullptr;
+
+    const std::string path = section + "/" + panel + "/" + control;
+    if (found.size() != 1) {
+        ret = error(found.empty() ? "no control " + path
+                    : std::to_string(found.size()) + " controls are named " + path + "; name them apart in their QML");
+        return nullptr;
+    }
+    ret = make_ok();
+    return found.front();
 }
 
-Response ScreencapController::trigger(const Request& request)
+void ScreencapController::trigger(const Request& request, const OnResponse& onResponse)
 {
     Ret ret;
     ui::INavigationControl* control = findControl(request, ret);
     if (!control) {
-        return make_response(request, ret);
+        onResponse(make_response(request, ret));
+        return;
     }
     if (!control->enabled()) {
-        return make_response(request, error("control is disabled: " + control->name().toStdString()));
+        onResponse(make_response(request, error("control is disabled: " + control->name().toStdString())));
+        return;
     }
     control->trigger();
-    return make_response(request, make_ok());
+
+    //! NOTE Controls often act through Qt.callLater (FlatButton clicks do), a queued call.
+    //! Queued calls run in order, so answering through one answers after the control acted.
+    QMetaObject::invokeMethod(this, [request, onResponse]() {
+        onResponse(make_response(request, make_ok()));
+    }, Qt::QueuedConnection);
 }
 
 Response ScreencapController::rect(const Request& request) const
@@ -228,6 +247,38 @@ Response ScreencapController::rect(const Request& request) const
     return answer(request, Val(ValMap {
         { "x", Val(r.x()) }, { "y", Val(r.y()) }, { "width", Val(r.width()) }, { "height", Val(r.height()) },
     }));
+}
+
+// ---- Window ----
+
+Response ScreencapController::setWindow(const Request& request)
+{
+    QQuickWindow* main = mainQuickWindow();
+    IF_ASSERT_FAILED(main && main->screen()) {
+        return make_response(request, make_ret(Ret::Code::InternalError));
+    }
+
+    const qreal dpr = main->devicePixelRatio();
+    const int width = request.params.at("width").toInt();
+    const int height = request.params.at("height").toInt();
+    const QSize size(std::lround(width / dpr), std::lround(height / dpr));
+    const QMargins frame = main->frameMargins();
+    const QRect available = main->screen()->availableGeometry();
+    if (width <= 0 || height <= 0
+        || size.width() + frame.left() + frame.right() > available.width()
+        || size.height() + frame.top() + frame.bottom() > available.height()) {
+        return make_response(request, error("the window must fit on its screen: "
+                                            + std::to_string(std::lround(available.width() * dpr)) + "x"
+                                            + std::to_string(std::lround(available.height() * dpr))
+                                            + " device pixels, frame included"));
+    }
+
+    if (main->windowStates() != Qt::WindowNoState) {
+        main->setWindowStates(Qt::WindowNoState);
+    }
+    main->resize(size);
+    main->setFramePosition(available.topLeft());
+    return make_response(request, make_ok());
 }
 
 // ---- Popups ----
@@ -256,10 +307,10 @@ std::vector<WindowView*> ScreencapController::openViews() const
     return views;
 }
 
-bool ScreencapController::anyOpenViewRendered() const
+bool ScreencapController::isRendered(const std::string& popupName) const
 {
     for (const WindowView* view : openViews()) {
-        if (m_rendered.count(view->window())) {
+        if (view->objectName().toStdString() == popupName && m_rendered.count(view->window())) {
             return true;
         }
     }
@@ -284,7 +335,8 @@ Val ScreencapController::popupList() const
 
 void ScreencapController::popups(const Request& request, const OnResponse& onResponse)
 {
-    if (!request.params.at("wait").toBool() || anyOpenViewRendered()) {
+    const std::string waitFor = param(request, "wait_for");
+    if (waitFor.empty() || isRendered(waitFor)) {
         onResponse(answer(request, popupList()));
         return;
     }
@@ -293,14 +345,14 @@ void ScreencapController::popups(const Request& request, const OnResponse& onRes
 
 void ScreencapController::answerPopupWaiters()
 {
-    if (m_popupWaiters.empty() || !anyOpenViewRendered()) {
-        return;
-    }
-    const Val list = popupList();
     auto waiters = std::move(m_popupWaiters);
     m_popupWaiters.clear();
-    for (const auto& [request, onResponse] : waiters) {
-        onResponse(answer(request, list));
+    for (auto& [request, onResponse] : waiters) {
+        if (isRendered(param(request, "wait_for"))) {
+            onResponse(answer(request, popupList()));
+        } else {
+            m_popupWaiters.emplace_back(std::move(request), std::move(onResponse));
+        }
     }
 }
 
@@ -331,14 +383,65 @@ QRect ScreencapController::toCaptureRect(const QWindow* window, const QRectF& wi
                  QSize(std::lround(r.width() * dpr), std::lround(r.height() * dpr)));
 }
 
-Response ScreencapController::capture(const Request& request)
+//! NOTE Rounds of the event loop a capture waits for the UI to settle; more is a layout that never ends
+static constexpr int SETTLE_ROUNDS = 100;
+
+static std::vector<QQuickWindow*> visibleQuickWindows()
+{
+    std::vector<QQuickWindow*> windows;
+    for (QWindow* window : QGuiApplication::allWindows()) {
+        QQuickWindow* quickWindow = qobject_cast<QQuickWindow*>(window);
+        if (quickWindow && quickWindow->isVisible()) {
+            windows.push_back(quickWindow);
+        }
+    }
+    return windows;
+}
+
+void ScreencapController::capture(const Request& request, const OnResponse& onResponse)
 {
     const QString path = QString::fromStdString(param(request, "path"));
     const QFileInfo file(path);
     if (path.isEmpty() || !file.isAbsolute() || !file.absoluteDir().exists()) {
-        return make_response(request, error("path must be absolute and its folder must exist: " + path.toStdString()));
+        onResponse(make_response(request, error("path must be absolute and its folder must exist: " + path.toStdString())));
+        return;
     }
 
+    settle(SETTLE_ROUNDS, [this, request, onResponse](bool settled) {
+        onResponse(settled ? grab(request)
+                   : make_response(request, error("the UI was still laying out after "
+                                                  + std::to_string(SETTLE_ROUNDS) + " rounds")));
+    });
+}
+
+//! NOTE Items finish appearing over several rounds of the event loop: a list creates its
+//! delegates when polished, a new Canvas asks to paint through a queued call, and that
+//! paint happens at the next polish. The UI has settled when a round ends (every event
+//! posted before it has run) with no item in any window waiting to be polished.
+void ScreencapController::settle(int roundsLeft, const std::function<void(bool)>& onSettled)
+{
+    QMetaObject::invokeMethod(this, [this, roundsLeft, onSettled]() {
+        bool polishPending = false;
+        for (QQuickWindow* window : visibleQuickWindows()) {
+            QQuickWindowPrivate* w = QQuickWindowPrivate::get(window);
+            if (!w->itemsToPolish.isEmpty()) {
+                polishPending = true;
+                w->polishItems();
+            }
+        }
+        if (!polishPending) {
+            onSettled(true);
+        } else if (roundsLeft == 0) {
+            onSettled(false);
+        } else {
+            settle(roundsLeft - 1, onSettled);
+        }
+    }, Qt::QueuedConnection);
+}
+
+Response ScreencapController::grab(const Request& request)
+{
+    const QString path = QString::fromStdString(param(request, "path"));
     QQuickWindow* main = mainQuickWindow();
     IF_ASSERT_FAILED(main) {
         return make_response(request, make_ret(Ret::Code::InternalError));

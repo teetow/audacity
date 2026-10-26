@@ -41,18 +41,21 @@ StyledPopupView {
             model: [
                 {
                     type: TrackType.MONO,
+                    navigationName: "mono",
                     icon: IconCode.CIRCLE,
                     text: qsTrc("projectscene", "Mono"),
                     enabled: true
                 },
                 {
                     type: TrackType.STEREO,
+                    navigationName: "stereo",
                     icon: IconCode.TWO_CIRCLES,
                     text: qsTrc("projectscene", "Stereo"),
                     enabled: true
                 },
                 {
                     type: TrackType.LABEL,
+                    navigationName: "label",
                     icon: IconCode.LOOP_IN,
                     text: qsTrc("projectscene", "Label"),
                     enabled: true
@@ -65,7 +68,7 @@ StyledPopupView {
                 Layout.fillHeight: true
                 Layout.margins: 2
 
-                navigation.name: "TrackType" + index
+                navigation.name: modelData.navigationName
                 navigation.panel: navPanel
                 navigation.column: index
 

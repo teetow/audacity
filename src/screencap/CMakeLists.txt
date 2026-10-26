@@ -21,9 +21,13 @@ target_sources(screencap PRIVATE
     internal/userinputblocker.h
 )
 
+# QuickPrivate: a capture waits until no item waits to be polished (QQuickWindowPrivate)
+find_package(Qt6 REQUIRED COMPONENTS QuickPrivate)
+
 target_link_libraries(screencap PRIVATE
     muse::ui
     muse::uicomponents
     muse::uicomponents_qml
     Qt::Quick
+    Qt6::QuickPrivate
 )
