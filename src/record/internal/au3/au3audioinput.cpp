@@ -4,6 +4,8 @@
 
 #include "au3audioinput.h"
 
+#include <QtGlobal>
+
 #include "global/async/async.h"
 
 #include "au3-audio-io/ProjectAudioIO.h"
@@ -159,6 +161,13 @@ bool Au3AudioInput::canStartAudioEngineMonitoring() const
 
 bool Au3AudioInput::audioEngineShouldBeMonitoring() const
 {
+    //! NOTE A screen capture rig (MUSE_SCREENCAP) sets the input meter itself
+    //! (command://screencap/input-meter) and must never open the user's microphone
+    static const bool screencap = qEnvironmentVariableIsSet("MUSE_SCREENCAP");
+    if (screencap) {
+        return false;
+    }
+
     // When to enable Monitoring on the Audio Engine?
     // Monitoring can't be started if we are recording or playing/pause
     // it can only be started when we are stopped
