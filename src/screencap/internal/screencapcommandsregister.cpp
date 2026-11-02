@@ -78,6 +78,10 @@ const std::vector<CommandInfo> s_commandInfos = {
         { "peak", Arg(DataType::Float, String(u"Peak level, dBFS")) },
         { "rms", Arg(DataType::Float, String(u"RMS level, dBFS")) },
     })),
+    info(SCREENCAP_VISIBLE_COMMAND, "Visible",
+         "Show the app's windows on screen, or keep them see-through and click-through (the default, so a run "
+         "doesn't flash on the user's screen); captures look the same either way",
+         InputSchema({ { "visible", Arg(DataType::Boolean, String(u"Whether the windows can be seen and clicked")) } })),
 };
 }
 

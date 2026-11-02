@@ -18,4 +18,5 @@ inline static const muse::rcommand::Command SCREENCAP_DISPATCH_COMMAND("command:
 inline static const muse::rcommand::Command SCREENCAP_USER_INPUT_COMMAND("command://screencap/user-input");
 inline static const muse::rcommand::Command SCREENCAP_WINDOW_COMMAND("command://screencap/window");
 inline static const muse::rcommand::Command SCREENCAP_INPUT_METER_COMMAND("command://screencap/input-meter");
+inline static const muse::rcommand::Command SCREENCAP_VISIBLE_COMMAND("command://screencap/visible");
 }

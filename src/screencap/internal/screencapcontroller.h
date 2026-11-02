@@ -73,6 +73,8 @@ private:
     Response setUserInput(const Request& request);
     Response setWindow(const Request& request);
     Response setInputMeter(const Request& request);
+    Response setVisible(const Request& request);
+    void applyVisibility(QWindow* window) const;
 
     muse::ui::INavigationControl* findControl(const Request& request, muse::Ret& ret) const;
     std::vector<muse::uicomponents::WindowView*> openViews() const;
@@ -88,5 +90,6 @@ private:
     std::set<const QWindow*> m_rendered;
     std::vector<std::pair<Request, OnResponse> > m_popupWaiters;
     UserInputBlocker m_userInputBlocker;
+    bool m_windowsVisible = false;
 };
 }

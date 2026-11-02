@@ -69,8 +69,9 @@ void ScreencapController::init()
     cd->onRequest(this, SCREENCAP_USER_INPUT_COMMAND, [this](const Request& r) { return setUserInput(r); });
     cd->onRequest(this, SCREENCAP_WINDOW_COMMAND, [this](const Request& r) { return setWindow(r); });
     cd->onRequest(this, SCREENCAP_INPUT_METER_COMMAND, [this](const Request& r) { return setInputMeter(r); });
+    cd->onRequest(this, SCREENCAP_VISIBLE_COMMAND, [this](const Request& r) { return setVisible(r); });
 
-    //! NOTE Watch every window being shown, to know when a popup has drawn its first frame
+    //! NOTE Watch every window being shown: to keep it out of sight, and to know when a popup has drawn its first frame
     qApp->installEventFilter(this);
 
     //! NOTE From the start: some marks the pointer leaves are app state, not hover (the
@@ -80,6 +81,13 @@ void ScreencapController::init()
 
 bool ScreencapController::eventFilter(QObject* watched, QEvent* event)
 {
+    //! NOTE Qt sends Show before the window reaches the screen, so it never appears opaque
+    if (event->type() == QEvent::Show) {
+        if (QWindow* window = qobject_cast<QWindow*>(watched)) {
+            applyVisibility(window);
+        }
+    }
+
     if (event->type() == QEvent::Show || event->type() == QEvent::Hide) {
         if (QQuickWindow* window = qobject_cast<QQuickWindow*>(watched)) {
             m_rendered.erase(window);
@@ -308,6 +316,24 @@ Response ScreencapController::setInputMeter(const Request& request)
     };
     for (audio::audioch_t channel : { 0, 1 }) {
         input->recordSignalChanges().send(channel, signal);
+    }
+    return make_response(request, make_ok());
+}
+
+// ---- Visibility ----
+
+void ScreencapController::applyVisibility(QWindow* window) const
+{
+    //! NOTE grabWindow renders the scene itself, not what is on screen: an invisible window captures the same
+    window->setOpacity(m_windowsVisible ? 1.0 : 0.0);
+    window->setFlag(Qt::WindowTransparentForInput, !m_windowsVisible);
+}
+
+Response ScreencapController::setVisible(const Request& request)
+{
+    m_windowsVisible = request.params.at("visible").toBool();
+    for (QWindow* window : QGuiApplication::allWindows()) {
+        applyVisibility(window);
     }
     return make_response(request, make_ok());
 }
