@@ -20,6 +20,7 @@
 #include "framework/ui/inavigationcontroller.h"
 #include "framework/ui/iuiconfiguration.h"
 #include "framework/ui/imainwindow.h"
+#include "record/irecord.h"
 
 #include "userinputblocker.h"
 
@@ -42,6 +43,7 @@ class ScreencapController : public QObject, public muse::rcommand::Commandable, 
     muse::ContextInject<muse::actions::IActionsDispatcher> actionsDispatcher{ this };
     muse::ContextInject<muse::ui::INavigationController> navigation{ this };
     muse::ContextInject<muse::ui::IMainWindow> mainWindow{ this };
+    muse::ContextInject<au::record::IRecord> record{ this };
     muse::GlobalInject<muse::ui::IUiConfiguration> uiConfiguration;
 
 public:
@@ -70,6 +72,7 @@ private:
     void dispatch(const Request& request, const OnResponse& onResponse);
     Response setUserInput(const Request& request);
     Response setWindow(const Request& request);
+    Response setInputMeter(const Request& request);
 
     muse::ui::INavigationControl* findControl(const Request& request, muse::Ret& ret) const;
     std::vector<muse::uicomponents::WindowView*> openViews() const;

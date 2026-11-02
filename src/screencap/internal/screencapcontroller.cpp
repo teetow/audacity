@@ -16,7 +16,10 @@
 #include <QScreen>
 #include <QtQuick/private/qquickwindow_p.h>
 
+#include "framework/global/types/ratio.h"
 #include "framework/uicomponents/qml/Muse/UiComponents/windowview.h"
+
+#include "audio/audiotypes.h"
 
 #include "../screencapcommands.h"
 
@@ -65,6 +68,7 @@ void ScreencapController::init()
                   ICommandDispatcher::AsyncCallBack([this](const Request& r, const OnResponse& on) { dispatch(r, on); }));
     cd->onRequest(this, SCREENCAP_USER_INPUT_COMMAND, [this](const Request& r) { return setUserInput(r); });
     cd->onRequest(this, SCREENCAP_WINDOW_COMMAND, [this](const Request& r) { return setWindow(r); });
+    cd->onRequest(this, SCREENCAP_INPUT_METER_COMMAND, [this](const Request& r) { return setInputMeter(r); });
 
     //! NOTE Watch every window being shown, to know when a popup has drawn its first frame
     qApp->installEventFilter(this);
@@ -278,6 +282,33 @@ Response ScreencapController::setWindow(const Request& request)
     }
     main->resize(size);
     main->setFramePosition(available.topLeft());
+    return make_response(request, make_ok());
+}
+
+// ---- Input meter ----
+
+Response ScreencapController::setInputMeter(const Request& request)
+{
+    const auto input = record() ? record()->audioInput() : nullptr;
+    IF_ASSERT_FAILED(input) {
+        return make_response(request, make_ret(Ret::Code::InternalError));
+    }
+
+    const float peak = request.params.at("peak").toFloat();
+    const float rms = request.params.at("rms").toFloat();
+    if (rms > peak) {
+        return make_response(request, error("rms can't be above peak"));
+    }
+
+    //! NOTE The meters hold the last level they were sent: with the microphone never
+    //! opened in screencap mode, nothing else sends one
+    const audio::MeterSignal signal {
+        { muse::db_to_linear(peak), peak },
+        { muse::db_to_linear(rms), rms },
+    };
+    for (audio::audioch_t channel : { 0, 1 }) {
+        input->recordSignalChanges().send(channel, signal);
+    }
     return make_response(request, make_ok());
 }
 

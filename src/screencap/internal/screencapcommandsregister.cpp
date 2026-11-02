@@ -71,6 +71,13 @@ const std::vector<CommandInfo> s_commandInfos = {
         { "width", Arg(DataType::Integer, String(u"Width, device pixels")) },
         { "height", Arg(DataType::Integer, String(u"Height, device pixels")) },
     })),
+    info(SCREENCAP_INPUT_METER_COMMAND, "Input meter",
+         "Show this level on every input meter (both channels); in screencap mode the microphone is never opened, "
+         "so the meters show only what this sets",
+         InputSchema({
+        { "peak", Arg(DataType::Float, String(u"Peak level, dBFS")) },
+        { "rms", Arg(DataType::Float, String(u"RMS level, dBFS")) },
+    })),
 };
 }
 
