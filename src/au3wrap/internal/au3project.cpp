@@ -39,11 +39,19 @@
 
 #include <random>
 
+#include <QtGlobal>
+
 using namespace au::au3;
 
 namespace {
 size_t randomIndex()
 {
+    //! NOTE A screen capture rig (MUSE_SCREENCAP) needs the same colours every run: start at the first
+    static const bool screencap = qEnvironmentVariableIsSet("MUSE_SCREENCAP");
+    if (screencap) {
+        return 0;
+    }
+
     std::random_device rd;
     std::mt19937 generator(rd());
     std::uniform_int_distribution<size_t> distribution(0, 20);
