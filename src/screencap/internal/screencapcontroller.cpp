@@ -52,7 +52,8 @@ void ScreencapController::init()
     cd->onRequest(this, SCREENCAP_LOOKS_COMMAND, [this](const Request& r) { return looks(r); });
     cd->onRequest(this, SCREENCAP_LOOK_COMMAND, [this](const Request& r) { return setLook(r); });
     cd->onRequest(this, SCREENCAP_CONTROLS_COMMAND, [this](const Request& r) { return controls(r); });
-    cd->onRequest(this, SCREENCAP_TRIGGER_COMMAND, [this](const Request& r) { return trigger(r); });
+    cd->onRequest(this, SCREENCAP_TRIGGER_COMMAND,
+                  ICommandDispatcher::AsyncCallBack([this](const Request& r, const OnResponse& on) { trigger(r, on); }));
     cd->onRequest(this, SCREENCAP_RECT_COMMAND, [this](const Request& r) { return rect(r); });
     cd->onRequest(this, SCREENCAP_POPUPS_COMMAND,
                   ICommandDispatcher::AsyncCallBack([this](const Request& r, const OnResponse& on) { popups(r, on); }));
@@ -206,18 +207,25 @@ ui::INavigationControl* ScreencapController::findControl(const Request& request,
     return found.front();
 }
 
-Response ScreencapController::trigger(const Request& request)
+void ScreencapController::trigger(const Request& request, const OnResponse& onResponse)
 {
     Ret ret;
     ui::INavigationControl* control = findControl(request, ret);
     if (!control) {
-        return make_response(request, ret);
+        onResponse(make_response(request, ret));
+        return;
     }
     if (!control->enabled()) {
-        return make_response(request, error("control is disabled: " + control->name().toStdString()));
+        onResponse(make_response(request, error("control is disabled: " + control->name().toStdString())));
+        return;
     }
     control->trigger();
-    return make_response(request, make_ok());
+
+    //! NOTE Controls often act through Qt.callLater (FlatButton clicks do), a queued call.
+    //! Queued calls run in order, so answering through one answers after the control acted.
+    QMetaObject::invokeMethod(this, [request, onResponse]() {
+        onResponse(make_response(request, make_ok()));
+    }, Qt::QueuedConnection);
 }
 
 Response ScreencapController::rect(const Request& request) const

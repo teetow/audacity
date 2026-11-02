@@ -59,7 +59,7 @@ private:
     Response looks(const Request& request) const;
     Response setLook(const Request& request);
     Response controls(const Request& request) const;
-    Response trigger(const Request& request);
+    void trigger(const Request& request, const OnResponse& onResponse);
     Response rect(const Request& request) const;
     void popups(const Request& request, const OnResponse& onResponse);
     Response closePopups(const Request& request);
