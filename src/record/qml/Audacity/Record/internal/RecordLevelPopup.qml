@@ -12,6 +12,7 @@ import Audacity.Playback 1.0
 
 StyledPopupView {
     id: root
+    objectName: "RecordLevelPopup"
 
     property alias volumeLevel: volumeSlider.volumeLevel
 
@@ -214,6 +215,7 @@ StyledPopupView {
 
                 checked: root.isInputMonitoringOn
 
+                navigation.name: "InputMonitoring"
                 navigation.panel: navPanel
                 navigation.order: 2
 
@@ -231,6 +233,7 @@ StyledPopupView {
 
                 checked: root.isMicMeteringOn
 
+                navigation.name: "MicMetering"
                 navigation.panel: navPanel
                 navigation.order: 3
 
