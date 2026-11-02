@@ -30,6 +30,7 @@ import Audacity.AppShell
 
 StyledDialogView {
     id: root
+    objectName: "WelcomeDialog"
 
     title: qsTrc("appshell/welcome", "Welcome")
 
