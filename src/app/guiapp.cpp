@@ -62,7 +62,8 @@ QString GuiApp::mainWindowQmlPath(const QString& platform) const
 
 void GuiApp::showContextSplash(const muse::modularity::ContextPtr& ctxId)
 {
-    if (m_splashScreen) {
+    //! NOTE A screen capture rig runs the app out of sight; a splash would flash on the user's screen
+    if (m_splashScreen || screencap::isEnabled()) {
         return;
     }
 
