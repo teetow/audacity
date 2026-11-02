@@ -10,6 +10,9 @@ Run `Audacity4.exe` with the environment variable `MUSE_SCREENCAP` set (any valu
 
 - doesn't activate the app's windows (Windows): launching, dialogs and popups don't take the focus. Clicking a window still activates it; Alt-Tab and the taskbar don't.
 - ignores the user's own mouse, keyboard, pen and touch from startup (Windows), so a pointer passing over the window leaves no hover or ruler marks in captures. The `user-input` command turns it back on.
+- keeps every window see-through and click-through, and skips the splash, so a run doesn't flash on the user's screen. Captures render the scene, so they look the same. The `visible` command shows the windows.
+- never opens the microphone; the `input-meter` command sets what the input meters show.
+- closes a project without asking to save: a run never keeps what it makes.
 - keeps popups (menus, flyouts) open while the app has no focus.
 - starts unattended: no welcome dialogs, no "quit unexpectedly" prompt, no plugin validation.
 - shows the release UI on development builds (dev mode off: no DevTools tab, no Diagnostics menu) and the release window title ("Audacity 4.0", not "Audacity 4.0 dev").
@@ -38,6 +41,11 @@ The screencap commands (`command://screencap/...`, tools `screencap_...`):
 | `capture` | Save the main window with its open popups to a PNG, optionally cropped |
 | `dispatch` | Dispatch any `command://` or `action://` URI |
 | `user-input` | Accept or ignore the user's own input |
+| `window` | Size the main window and move it to its screen's top-left corner |
+| `input-meter` | Show a peak and RMS level on every input meter |
+| `visible` | Show the windows, or keep them see-through (the default) |
+| `settings-snapshot` | Remember every setting |
+| `settings-restore` | Put back the settings changed since the snapshot; answers with them |
 
 Capture coordinates are device pixels from the main window's top-left corner. Controls are found by the names in the app's keyboard navigation; a control without a stable name is fixed here, in the QML.
 
