@@ -20,6 +20,7 @@
 #include "framework/ui/inavigationcontroller.h"
 #include "framework/ui/iuiconfiguration.h"
 #include "framework/global/settings.h"
+#include "framework/interactive/iinteractive.h"
 #include "framework/ui/imainwindow.h"
 #include "record/irecord.h"
 
@@ -45,6 +46,7 @@ class ScreencapController : public QObject, public muse::rcommand::Commandable, 
     muse::ContextInject<muse::ui::INavigationController> navigation{ this };
     muse::ContextInject<muse::ui::IMainWindow> mainWindow{ this };
     muse::ContextInject<au::record::IRecord> record{ this };
+    muse::ContextInject<muse::IInteractive> interactive{ this };
     muse::GlobalInject<muse::ui::IUiConfiguration> uiConfiguration;
 
 public:
@@ -77,6 +79,7 @@ private:
     Response setVisible(const Request& request);
     Response settingsSnapshot(const Request& request);
     Response settingsRestore(const Request& request);
+    Response open(const Request& request);
     void applyVisibility(QWindow* window) const;
 
     muse::ui::INavigationControl* findControl(const Request& request, muse::Ret& ret) const;

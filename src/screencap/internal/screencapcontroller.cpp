@@ -72,6 +72,7 @@ void ScreencapController::init()
     cd->onRequest(this, SCREENCAP_VISIBLE_COMMAND, [this](const Request& r) { return setVisible(r); });
     cd->onRequest(this, SCREENCAP_SETTINGS_SNAPSHOT_COMMAND, [this](const Request& r) { return settingsSnapshot(r); });
     cd->onRequest(this, SCREENCAP_SETTINGS_RESTORE_COMMAND, [this](const Request& r) { return settingsRestore(r); });
+    cd->onRequest(this, SCREENCAP_OPEN_COMMAND, [this](const Request& r) { return open(r); });
 
     //! NOTE Watch every window being shown: to keep it out of sight, and to know when a popup has drawn its first frame
     qApp->installEventFilter(this);
@@ -370,6 +371,19 @@ Response ScreencapController::settingsRestore(const Request& request)
         muse::settings()->setSharedValue(key, value);
     }
     return answer(request, Val(ValMap { { "restored", Val(restored) } }));
+}
+
+// ---- Open ----
+
+Response ScreencapController::open(const Request& request)
+{
+    const std::string uri = param(request, "uri");
+    if (uri.empty()) {
+        return make_response(request, error("uri is empty"));
+    }
+    //! NOTE A dialog's promise settles when it closes; the rig waits for it to open with Popups instead
+    interactive()->open(muse::UriQuery(uri));
+    return make_response(request, make_ok());
 }
 
 // ---- Popups ----

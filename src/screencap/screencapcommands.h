@@ -21,4 +21,5 @@ inline static const muse::rcommand::Command SCREENCAP_INPUT_METER_COMMAND("comma
 inline static const muse::rcommand::Command SCREENCAP_VISIBLE_COMMAND("command://screencap/visible");
 inline static const muse::rcommand::Command SCREENCAP_SETTINGS_SNAPSHOT_COMMAND("command://screencap/settings-snapshot");
 inline static const muse::rcommand::Command SCREENCAP_SETTINGS_RESTORE_COMMAND("command://screencap/settings-restore");
+inline static const muse::rcommand::Command SCREENCAP_OPEN_COMMAND("command://screencap/open");
 }

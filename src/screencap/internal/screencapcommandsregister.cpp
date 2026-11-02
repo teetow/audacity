@@ -90,6 +90,10 @@ const std::vector<CommandInfo> s_commandInfos = {
     info(SCREENCAP_SETTINGS_RESTORE_COMMAND, "Settings restore",
          "Set every setting that changed since the last snapshot back to its snapshot value, the way the UI sets "
          "it (listeners are told); answers with the settings it restored"),
+    info(SCREENCAP_OPEN_COMMAND, "Open",
+         "Open an app page or dialog by its URI (audacity://welcomedialog), as the app itself would; answers once "
+         "it is asked to open, so wait for it with Popups",
+         InputSchema({ { "uri", stringArg(u"The page's URI, with query parameters if it takes any") } })),
 };
 }
 
