@@ -3,6 +3,7 @@
  */
 #pragma once
 
+#include <functional>
 #include <map>
 #include <set>
 #include <vector>
@@ -63,7 +64,9 @@ private:
     Response rect(const Request& request) const;
     void popups(const Request& request, const OnResponse& onResponse);
     Response closePopups(const Request& request);
-    Response capture(const Request& request);
+    void capture(const Request& request, const OnResponse& onResponse);
+    Response grab(const Request& request);
+    void settle(int roundsLeft, const std::function<void(bool)>& onSettled);
     void dispatch(const Request& request, const OnResponse& onResponse);
     Response setUserInput(const Request& request);
     Response setWindow(const Request& request);

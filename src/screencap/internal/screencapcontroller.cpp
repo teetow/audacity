@@ -14,6 +14,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QScreen>
+#include <QtQuick/private/qquickwindow_p.h>
 
 #include "framework/uicomponents/qml/Muse/UiComponents/windowview.h"
 
@@ -58,7 +59,8 @@ void ScreencapController::init()
     cd->onRequest(this, SCREENCAP_POPUPS_COMMAND,
                   ICommandDispatcher::AsyncCallBack([this](const Request& r, const OnResponse& on) { popups(r, on); }));
     cd->onRequest(this, SCREENCAP_CLOSE_POPUPS_COMMAND, [this](const Request& r) { return closePopups(r); });
-    cd->onRequest(this, SCREENCAP_CAPTURE_COMMAND, [this](const Request& r) { return capture(r); });
+    cd->onRequest(this, SCREENCAP_CAPTURE_COMMAND,
+                  ICommandDispatcher::AsyncCallBack([this](const Request& r, const OnResponse& on) { capture(r, on); }));
     cd->onRequest(this, SCREENCAP_DISPATCH_COMMAND,
                   ICommandDispatcher::AsyncCallBack([this](const Request& r, const OnResponse& on) { dispatch(r, on); }));
     cd->onRequest(this, SCREENCAP_USER_INPUT_COMMAND, [this](const Request& r) { return setUserInput(r); });
@@ -381,14 +383,65 @@ QRect ScreencapController::toCaptureRect(const QWindow* window, const QRectF& wi
                  QSize(std::lround(r.width() * dpr), std::lround(r.height() * dpr)));
 }
 
-Response ScreencapController::capture(const Request& request)
+//! NOTE Rounds of the event loop a capture waits for the UI to settle; more is a layout that never ends
+static constexpr int SETTLE_ROUNDS = 100;
+
+static std::vector<QQuickWindow*> visibleQuickWindows()
+{
+    std::vector<QQuickWindow*> windows;
+    for (QWindow* window : QGuiApplication::allWindows()) {
+        QQuickWindow* quickWindow = qobject_cast<QQuickWindow*>(window);
+        if (quickWindow && quickWindow->isVisible()) {
+            windows.push_back(quickWindow);
+        }
+    }
+    return windows;
+}
+
+void ScreencapController::capture(const Request& request, const OnResponse& onResponse)
 {
     const QString path = QString::fromStdString(param(request, "path"));
     const QFileInfo file(path);
     if (path.isEmpty() || !file.isAbsolute() || !file.absoluteDir().exists()) {
-        return make_response(request, error("path must be absolute and its folder must exist: " + path.toStdString()));
+        onResponse(make_response(request, error("path must be absolute and its folder must exist: " + path.toStdString())));
+        return;
     }
 
+    settle(SETTLE_ROUNDS, [this, request, onResponse](bool settled) {
+        onResponse(settled ? grab(request)
+                   : make_response(request, error("the UI was still laying out after "
+                                                  + std::to_string(SETTLE_ROUNDS) + " rounds")));
+    });
+}
+
+//! NOTE Items finish appearing over several rounds of the event loop: a list creates its
+//! delegates when polished, a new Canvas asks to paint through a queued call, and that
+//! paint happens at the next polish. The UI has settled when a round ends (every event
+//! posted before it has run) with no item in any window waiting to be polished.
+void ScreencapController::settle(int roundsLeft, const std::function<void(bool)>& onSettled)
+{
+    QMetaObject::invokeMethod(this, [this, roundsLeft, onSettled]() {
+        bool polishPending = false;
+        for (QQuickWindow* window : visibleQuickWindows()) {
+            QQuickWindowPrivate* w = QQuickWindowPrivate::get(window);
+            if (!w->itemsToPolish.isEmpty()) {
+                polishPending = true;
+                w->polishItems();
+            }
+        }
+        if (!polishPending) {
+            onSettled(true);
+        } else if (roundsLeft == 0) {
+            onSettled(false);
+        } else {
+            settle(roundsLeft - 1, onSettled);
+        }
+    }, Qt::QueuedConnection);
+}
+
+Response ScreencapController::grab(const Request& request)
+{
+    const QString path = QString::fromStdString(param(request, "path"));
     QQuickWindow* main = mainQuickWindow();
     IF_ASSERT_FAILED(main) {
         return make_response(request, make_ret(Ret::Code::InternalError));
