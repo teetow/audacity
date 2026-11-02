@@ -45,7 +45,7 @@ const std::vector<CommandInfo> s_commandInfos = {
          "A control's rectangle in capture coordinates (device pixels from the main window's top-left)", CONTROL_SCHEMA),
     info(SCREENCAP_POPUPS_COMMAND, "Popups",
          "Open popups, menus and dialogs, oldest first, with their rectangles in capture coordinates",
-         InputSchema({ { "wait", Arg(DataType::Boolean, String(u"Answer once at least one is open and has drawn a frame")) } })),
+         InputSchema({ { "wait_for", stringArg(u"A popup's name: answer once it is open and has drawn a frame") } })),
     info(SCREENCAP_CLOSE_POPUPS_COMMAND, "Close popups",
          "Close every open popup, menu and dialog (a dialog closed this way is cancelled)"),
     info(SCREENCAP_CAPTURE_COMMAND, "Capture",

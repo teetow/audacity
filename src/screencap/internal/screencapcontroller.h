@@ -70,7 +70,7 @@ private:
 
     muse::ui::INavigationControl* findControl(const Request& request, muse::Ret& ret) const;
     std::vector<muse::uicomponents::WindowView*> openViews() const;
-    bool anyOpenViewRendered() const;
+    bool isRendered(const std::string& popupName) const;
     muse::Val popupList() const;
     void answerPopupWaiters();
 

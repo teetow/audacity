@@ -305,10 +305,10 @@ std::vector<WindowView*> ScreencapController::openViews() const
     return views;
 }
 
-bool ScreencapController::anyOpenViewRendered() const
+bool ScreencapController::isRendered(const std::string& popupName) const
 {
     for (const WindowView* view : openViews()) {
-        if (m_rendered.count(view->window())) {
+        if (view->objectName().toStdString() == popupName && m_rendered.count(view->window())) {
             return true;
         }
     }
@@ -333,7 +333,8 @@ Val ScreencapController::popupList() const
 
 void ScreencapController::popups(const Request& request, const OnResponse& onResponse)
 {
-    if (!request.params.at("wait").toBool() || anyOpenViewRendered()) {
+    const std::string waitFor = param(request, "wait_for");
+    if (waitFor.empty() || isRendered(waitFor)) {
         onResponse(answer(request, popupList()));
         return;
     }
@@ -342,14 +343,14 @@ void ScreencapController::popups(const Request& request, const OnResponse& onRes
 
 void ScreencapController::answerPopupWaiters()
 {
-    if (m_popupWaiters.empty() || !anyOpenViewRendered()) {
-        return;
-    }
-    const Val list = popupList();
     auto waiters = std::move(m_popupWaiters);
     m_popupWaiters.clear();
-    for (const auto& [request, onResponse] : waiters) {
-        onResponse(answer(request, list));
+    for (auto& [request, onResponse] : waiters) {
+        if (isRendered(param(request, "wait_for"))) {
+            onResponse(answer(request, popupList()));
+        } else {
+            m_popupWaiters.emplace_back(std::move(request), std::move(onResponse));
+        }
     }
 }
 
