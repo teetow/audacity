@@ -19,6 +19,7 @@
 #include "framework/actions/iactionsdispatcher.h"
 #include "framework/ui/inavigationcontroller.h"
 #include "framework/ui/iuiconfiguration.h"
+#include "framework/global/settings.h"
 #include "framework/ui/imainwindow.h"
 #include "record/irecord.h"
 
@@ -74,6 +75,8 @@ private:
     Response setWindow(const Request& request);
     Response setInputMeter(const Request& request);
     Response setVisible(const Request& request);
+    Response settingsSnapshot(const Request& request);
+    Response settingsRestore(const Request& request);
     void applyVisibility(QWindow* window) const;
 
     muse::ui::INavigationControl* findControl(const Request& request, muse::Ret& ret) const;
@@ -91,5 +94,6 @@ private:
     std::vector<std::pair<Request, OnResponse> > m_popupWaiters;
     UserInputBlocker m_userInputBlocker;
     bool m_windowsVisible = false;
+    std::map<muse::Settings::Key, muse::Val> m_settingsSnapshot;
 };
 }

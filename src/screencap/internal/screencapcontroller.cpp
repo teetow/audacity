@@ -70,6 +70,8 @@ void ScreencapController::init()
     cd->onRequest(this, SCREENCAP_WINDOW_COMMAND, [this](const Request& r) { return setWindow(r); });
     cd->onRequest(this, SCREENCAP_INPUT_METER_COMMAND, [this](const Request& r) { return setInputMeter(r); });
     cd->onRequest(this, SCREENCAP_VISIBLE_COMMAND, [this](const Request& r) { return setVisible(r); });
+    cd->onRequest(this, SCREENCAP_SETTINGS_SNAPSHOT_COMMAND, [this](const Request& r) { return settingsSnapshot(r); });
+    cd->onRequest(this, SCREENCAP_SETTINGS_RESTORE_COMMAND, [this](const Request& r) { return settingsRestore(r); });
 
     //! NOTE Watch every window being shown: to keep it out of sight, and to know when a popup has drawn its first frame
     qApp->installEventFilter(this);
@@ -336,6 +338,38 @@ Response ScreencapController::setVisible(const Request& request)
         applyVisibility(window);
     }
     return make_response(request, make_ok());
+}
+
+// ---- Settings ----
+
+Response ScreencapController::settingsSnapshot(const Request& request)
+{
+    m_settingsSnapshot.clear();
+    for (const auto& [key, item] : muse::settings()->items()) {
+        m_settingsSnapshot[key] = item.value;
+    }
+    return make_response(request, make_ok());
+}
+
+//! NOTE A shot's project is thrown away with it; its settings come back here, through the
+//! same call the UI's own controls make, so whatever listens reacts as to a user's change.
+//! A setting that didn't exist at the snapshot was at its default then.
+Response ScreencapController::settingsRestore(const Request& request)
+{
+    ValList restored;
+    std::vector<std::pair<Settings::Key, Val> > changes;
+    for (const auto& [key, item] : muse::settings()->items()) {
+        const auto before = m_settingsSnapshot.find(key);
+        const Val& target = before != m_settingsSnapshot.end() ? before->second : item.defaultValue;
+        if (!(target == item.value)) {
+            changes.emplace_back(key, target);
+            restored.push_back(Val(key.moduleName + "/" + key.key));
+        }
+    }
+    for (const auto& [key, value] : changes) {
+        muse::settings()->setSharedValue(key, value);
+    }
+    return answer(request, Val(ValMap { { "restored", Val(restored) } }));
 }
 
 // ---- Popups ----

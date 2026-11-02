@@ -82,6 +82,11 @@ const std::vector<CommandInfo> s_commandInfos = {
          "Show the app's windows on screen, or keep them see-through and click-through (the default, so a run "
          "doesn't flash on the user's screen); captures look the same either way",
          InputSchema({ { "visible", Arg(DataType::Boolean, String(u"Whether the windows can be seen and clicked")) } })),
+    info(SCREENCAP_SETTINGS_SNAPSHOT_COMMAND, "Settings snapshot",
+         "Remember every setting's value, for Settings restore to return to"),
+    info(SCREENCAP_SETTINGS_RESTORE_COMMAND, "Settings restore",
+         "Set every setting that changed since the last snapshot back to its snapshot value, the way the UI sets "
+         "it (listeners are told); answers with the settings it restored"),
 };
 }
 

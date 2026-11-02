@@ -19,4 +19,6 @@ inline static const muse::rcommand::Command SCREENCAP_USER_INPUT_COMMAND("comman
 inline static const muse::rcommand::Command SCREENCAP_WINDOW_COMMAND("command://screencap/window");
 inline static const muse::rcommand::Command SCREENCAP_INPUT_METER_COMMAND("command://screencap/input-meter");
 inline static const muse::rcommand::Command SCREENCAP_VISIBLE_COMMAND("command://screencap/visible");
+inline static const muse::rcommand::Command SCREENCAP_SETTINGS_SNAPSHOT_COMMAND("command://screencap/settings-snapshot");
+inline static const muse::rcommand::Command SCREENCAP_SETTINGS_RESTORE_COMMAND("command://screencap/settings-restore");
 }
