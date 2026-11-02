@@ -43,25 +43,25 @@ Capture coordinates are device pixels from the main window's top-left corner. Co
 
 The client that uses all this lives in the Audacity-Plan repo (`tools/tutorials/au4/`).
 
-## Patches to the framework
+## Changes to the framework
 
-Fixes to the MuseScore framework live in `muse/`, a submodule. They are commits on a local `screencap` branch inside `muse/` (the PR-able form) and are carried here as `patches/muse/*.patch`, exported with `git format-patch`, so the commit messages travel with them. Rebasing this branch then never conflicts on the submodule pointer.
-
-`apply-patches.sh` brings `muse/` to "the pinned commit plus every patch", comparing whole trees: if that's already what `muse/` holds it does nothing, if `muse/` is clean at the pinned commit it applies the series, and anything else stops it. When `muse/` is checked out on its `screencap` branch it leaves it alone. To add or change a patch: commit in `muse/` on its `screencap` branch, then re-export:
-
-```
-git -C muse format-patch -N --no-signature --zero-commit -o ../screencap/patches/muse <pinned-commit>..screencap
-```
+Fixes to the MuseScore framework live in `muse/`, a submodule. They are commits on the `screencap` branch of the fork github.com/teetow/muse_framework (the PR-able form), and this branch pins `muse/` to that branch's tip; `.gitmodules` points at the fork so a fresh clone can fetch it. Push the muse commits to the fork before pushing a commit here that pins them.
 
 ## Daily routine
 
+When master pins a new `muse/` commit, the muse branch moves onto it first:
+
 ```
 git fetch origin
-git rebase origin/master
-git submodule update            (resets muse/ to master's pinned commit)
-screencap\rebuild.cmd           (re-applies the patches, then builds)
+git -C muse fetch origin
+git -C muse rebase <master's muse commit> screencap     (git ls-tree origin/master muse)
+git rebase origin/master                                (stops on the muse pointer if master moved it:)
+git update-index --cacheinfo 160000,$(git -C muse rev-parse screencap),muse
+git rebase --continue
+git submodule update --init muse_deps
+screencapebuild.cmd
 ```
 
-If a patch no longer applies because upstream changed the same lines, `apply-patches.sh` stops: rebase the `muse/` `screencap` branch onto the new pinned commit, fix the conflict there, and re-export.
+If master didn't move `muse/`, only the rebase on `origin/master` and the build are needed.
 
 The build uses the `default` preset from `CMakeUserPresets.json`, which is gitignored; copy it from the main checkout if it is missing. Output: `build\default\install\bin\Audacity4.exe`.
