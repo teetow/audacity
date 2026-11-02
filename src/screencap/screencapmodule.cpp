@@ -7,6 +7,11 @@
 #include "framework/rcommand/icommandsregister.h"
 #include "framework/rcommand/icommandsstate.h"
 
+#include "log.h"
+
+#include "audio/driver/iaudiodrivercontroller.h"
+
+#include "internal/screencapaudiodrivercontroller.h"
 #include "internal/screencapcommandsregister.h"
 #include "internal/screencapcommandsstate.h"
 #include "internal/screencapcontroller.h"
@@ -20,6 +25,25 @@ static const std::string mname("screencap");
 std::string ScreencapModule::moduleName() const
 {
     return mname;
+}
+
+void ScreencapModule::registerExports()
+{
+    //! NOTE Captures show made-up audio devices, never the capturing machine's own. This
+    //! module is added last, so the real controller is registered by now and nothing has
+    //! asked for it yet; the audio module keeps using the real one directly.
+    auto real = globalIoc()->resolve<au::audio::IAudioDriverController>(mname);
+    IF_ASSERT_FAILED(real) {
+        return;
+    }
+    m_audioDriverController = std::make_shared<ScreencapAudioDriverController>(real);
+    globalIoc()->unregister<au::audio::IAudioDriverController>(mname);
+    globalIoc()->registerExport<au::audio::IAudioDriverController>(mname, m_audioDriverController);
+}
+
+void ScreencapModule::onInit(const IApplication::RunMode&)
+{
+    m_audioDriverController->init();
 }
 
 void ScreencapModule::resolveImports()

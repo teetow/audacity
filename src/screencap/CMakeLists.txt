@@ -11,6 +11,8 @@ target_sources(screencap PRIVATE
     screencapmodule.h
     screencapcommands.h
 
+    internal/screencapaudiodrivercontroller.cpp
+    internal/screencapaudiodrivercontroller.h
     internal/screencapcommandsregister.cpp
     internal/screencapcommandsregister.h
     internal/screencapcommandsstate.cpp
