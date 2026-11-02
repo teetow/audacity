@@ -179,6 +179,7 @@ ui::INavigationControl* ScreencapController::findControl(const Request& request,
     const std::string panel = param(request, "panel");
     const std::string control = param(request, "control");
 
+    std::vector<ui::INavigationControl*> found;
     for (ui::INavigationSection* s : navigation()->sections()) {
         if (s->name().toStdString() != section) {
             continue;
@@ -189,14 +190,20 @@ ui::INavigationControl* ScreencapController::findControl(const Request& request,
             }
             for (ui::INavigationControl* c : p->controls()) {
                 if (c->name().toStdString() == control) {
-                    ret = make_ok();
-                    return c;
+                    found.push_back(c);
                 }
             }
         }
     }
-    ret = error("no control " + section + " / " + panel + " / " + control);
-    return nullptr;
+
+    const std::string path = section + "/" + panel + "/" + control;
+    if (found.size() != 1) {
+        ret = error(found.empty() ? "no control " + path
+                    : std::to_string(found.size()) + " controls are named " + path + "; name them apart in their QML");
+        return nullptr;
+    }
+    ret = make_ok();
+    return found.front();
 }
 
 Response ScreencapController::trigger(const Request& request)
