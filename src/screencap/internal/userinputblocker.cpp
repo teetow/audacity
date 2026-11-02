@@ -43,10 +43,12 @@ void UserInputBlocker::setBlocking(bool blocking)
 
     if (!blocking) {
         QCoreApplication::instance()->removeNativeEventFilter(this);
+        QCoreApplication::instance()->removeEventFilter(this);
         return;
     }
 
     QCoreApplication::instance()->installNativeEventFilter(this);
+    QCoreApplication::instance()->installEventFilter(this);
 
     //! NOTE What the pointer hovers stays hovered until it leaves; make it leave now
     for (QWindow* window : QGuiApplication::allWindows()) {
@@ -55,6 +57,15 @@ void UserInputBlocker::setBlocking(bool blocking)
             QCoreApplication::sendEvent(window, &leave);
         }
     }
+}
+
+bool UserInputBlocker::eventFilter(QObject* watched, QEvent* event)
+{
+    //! NOTE Spontaneous: from the platform or made up by Qt for it, never sent by the app
+    if (event->spontaneous() && (event->type() == QEvent::Enter || event->isPointerEvent())) {
+        return true;
+    }
+    return QObject::eventFilter(watched, event);
 }
 
 bool UserInputBlocker::nativeEventFilter(const QByteArray& eventType, void* message, qintptr*)
