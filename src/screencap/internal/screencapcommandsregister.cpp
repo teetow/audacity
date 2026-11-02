@@ -64,6 +64,13 @@ const std::vector<CommandInfo> s_commandInfos = {
          "Accept or ignore the user's own mouse and keyboard (ignored from startup, so they leave no marks in captures); "
          "ignoring again clears hover, but not marks the app keeps, such as the ruler's pointer line. Commands are unaffected",
          InputSchema({ { "enabled", Arg(DataType::Boolean, String(u"Whether the app reacts to the user's input")) } })),
+    info(SCREENCAP_WINDOW_COMMAND, "Window size",
+         "Size the main window (device pixels) and move it to the top-left corner of its screen, so popups never "
+         "have to move to stay on screen; fails if it doesn't fit there",
+         InputSchema({
+        { "width", Arg(DataType::Integer, String(u"Width, device pixels")) },
+        { "height", Arg(DataType::Integer, String(u"Height, device pixels")) },
+    })),
 };
 }
 

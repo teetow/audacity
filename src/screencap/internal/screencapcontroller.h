@@ -66,6 +66,7 @@ private:
     Response capture(const Request& request);
     void dispatch(const Request& request, const OnResponse& onResponse);
     Response setUserInput(const Request& request);
+    Response setWindow(const Request& request);
 
     muse::ui::INavigationControl* findControl(const Request& request, muse::Ret& ret) const;
     std::vector<muse::uicomponents::WindowView*> openViews() const;

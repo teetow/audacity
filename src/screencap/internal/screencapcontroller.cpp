@@ -13,6 +13,7 @@
 #include <QPainter>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QScreen>
 
 #include "framework/uicomponents/qml/Muse/UiComponents/windowview.h"
 
@@ -60,6 +61,7 @@ void ScreencapController::init()
     cd->onRequest(this, SCREENCAP_DISPATCH_COMMAND,
                   ICommandDispatcher::AsyncCallBack([this](const Request& r, const OnResponse& on) { dispatch(r, on); }));
     cd->onRequest(this, SCREENCAP_USER_INPUT_COMMAND, [this](const Request& r) { return setUserInput(r); });
+    cd->onRequest(this, SCREENCAP_WINDOW_COMMAND, [this](const Request& r) { return setWindow(r); });
 
     //! NOTE Watch every window being shown, to know when a popup has drawn its first frame
     qApp->installEventFilter(this);
@@ -228,6 +230,38 @@ Response ScreencapController::rect(const Request& request) const
     return answer(request, Val(ValMap {
         { "x", Val(r.x()) }, { "y", Val(r.y()) }, { "width", Val(r.width()) }, { "height", Val(r.height()) },
     }));
+}
+
+// ---- Window ----
+
+Response ScreencapController::setWindow(const Request& request)
+{
+    QQuickWindow* main = mainQuickWindow();
+    IF_ASSERT_FAILED(main && main->screen()) {
+        return make_response(request, make_ret(Ret::Code::InternalError));
+    }
+
+    const qreal dpr = main->devicePixelRatio();
+    const int width = request.params.at("width").toInt();
+    const int height = request.params.at("height").toInt();
+    const QSize size(std::lround(width / dpr), std::lround(height / dpr));
+    const QMargins frame = main->frameMargins();
+    const QRect available = main->screen()->availableGeometry();
+    if (width <= 0 || height <= 0
+        || size.width() + frame.left() + frame.right() > available.width()
+        || size.height() + frame.top() + frame.bottom() > available.height()) {
+        return make_response(request, error("the window must fit on its screen: "
+                                            + std::to_string(std::lround(available.width() * dpr)) + "x"
+                                            + std::to_string(std::lround(available.height() * dpr))
+                                            + " device pixels, frame included"));
+    }
+
+    if (main->windowStates() != Qt::WindowNoState) {
+        main->setWindowStates(Qt::WindowNoState);
+    }
+    main->resize(size);
+    main->setFramePosition(available.topLeft());
+    return make_response(request, make_ok());
 }
 
 // ---- Popups ----
