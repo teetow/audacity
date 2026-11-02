@@ -726,7 +726,9 @@ bool ProjectActionsController::closeOpenedProject(const bool quitApp)
         return true;
     }
 
-    if (project->hasUnsavedChanges()) {
+    //! NOTE A screen capture rig (MUSE_SCREENCAP) never keeps what it makes: close without asking
+    static const bool screencap = qEnvironmentVariableIsSet("MUSE_SCREENCAP");
+    if (project->hasUnsavedChanges() && !screencap) {
         const IInteractive::Button btn = askAboutSavingProject(project);
 
         if (btn == IInteractive::Button::Cancel) {
