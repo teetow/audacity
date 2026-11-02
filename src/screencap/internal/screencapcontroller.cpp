@@ -498,7 +498,7 @@ void ScreencapController::capture(const Request& request, const OnResponse& onRe
         return;
     }
 
-    settle(SETTLE_ROUNDS, [this, request, onResponse](bool settled) {
+    settle(SETTLE_ROUNDS, 0, [this, request, onResponse](bool settled) {
         onResponse(settled ? grab(request)
                    : make_response(request, error("the UI was still laying out after "
                                                   + std::to_string(SETTLE_ROUNDS) + " rounds")));
@@ -507,11 +507,13 @@ void ScreencapController::capture(const Request& request, const OnResponse& onRe
 
 //! NOTE Items finish appearing over several rounds of the event loop: a list creates its
 //! delegates when polished, a new Canvas asks to paint through a queued call, and that
-//! paint happens at the next polish. The UI has settled when a round ends (every event
-//! posted before it has run) with no item in any window waiting to be polished.
-void ScreencapController::settle(int roundsLeft, const std::function<void(bool)>& onSettled)
+//! paint happens at the next polish. A round runs after every event posted before it;
+//! the UI has settled when two rounds in a row find no item waiting to be polished, since
+//! work queued while the first round waited (by a frame drawn just before it) lands
+//! after it, before the second.
+void ScreencapController::settle(int roundsLeft, int quietRounds, const std::function<void(bool)>& onSettled)
 {
-    QMetaObject::invokeMethod(this, [this, roundsLeft, onSettled]() {
+    QMetaObject::invokeMethod(this, [this, roundsLeft, quietRounds, onSettled]() {
         bool polishPending = false;
         for (QQuickWindow* window : visibleQuickWindows()) {
             QQuickWindowPrivate* w = QQuickWindowPrivate::get(window);
@@ -520,12 +522,13 @@ void ScreencapController::settle(int roundsLeft, const std::function<void(bool)>
                 w->polishItems();
             }
         }
-        if (!polishPending) {
+        const int quiet = polishPending ? 0 : quietRounds + 1;
+        if (quiet == 2) {
             onSettled(true);
         } else if (roundsLeft == 0) {
             onSettled(false);
         } else {
-            settle(roundsLeft - 1, onSettled);
+            settle(roundsLeft - 1, quiet, onSettled);
         }
     }, Qt::QueuedConnection);
 }
