@@ -136,14 +136,39 @@ void WaveformPainter::Draw(size_t channelIndex,
         return;
     }
 
-    const int top = static_cast<int>(metrics.top);
-    const int height = static_cast<int>(metrics.height);
-    const double left = metrics.left;
+    //! NOTE Draw in device pixels when the painter only scales (the usual high-DPI case):
+    //! the tiles are built at the resolution they are shown at and copied 1:1, which keeps the
+    //! waveform sharp on scaled displays and keeps QPainter on its fast, unscaled copy path.
+    //! Columns need at least one sample each, which limits how far the zoom can be scaled.
+    const QTransform deviceTransform = painter.deviceTransform();
+    const double rate = mWaveClip->GetRate() / mWaveClip->GetStretchRatio();
+    const bool devicePixels = deviceTransform.type() <= QTransform::TxScale
+                              && rate / (metrics.zoom * deviceTransform.m11()) >= 1.0;
+
+    const double sx = devicePixels ? deviceTransform.m11() : 1.0;
+    const double sy = devicePixels ? deviceTransform.m22() : 1.0;
+    const double dx = devicePixels ? deviceTransform.dx() : 0.0;
+    const double dy = devicePixels ? deviceTransform.dy() : 0.0;
+
+    const int top = static_cast<int>(std::lround(metrics.top * sy + dy));
+    const int height = static_cast<int>(std::lround((metrics.top + metrics.height) * sy + dy)) - top;
+    const double left = std::round(metrics.left * sx + dx);
     if (height <= 0) {
         return;
     }
 
-    const ZoomInfo zoomInfo(0.0, metrics.zoom);
+    WavePaintParameters deviceParams = params;
+    deviceParams.Height = height;
+
+    const ZoomInfo zoomInfo(0.0, metrics.zoom * sx);
+
+    painter.save();
+    if (devicePixels) {
+        //! The device transform is the world transform followed by the high-DPI scale;
+        //! undoing that scale in the world transform leaves the painter in device pixels
+        const QTransform hiDpiScale = painter.worldTransform().inverted() * deviceTransform;
+        painter.setWorldTransform(hiDpiScale.inverted());
+    }
 
     //! NOTE The time selection is not rendered into the tiles: one cache holds every column in
     //! the normal colors and the other in the selected colors, and the selection only decides
@@ -152,7 +177,7 @@ void WaveformPainter::Draw(size_t channelIndex,
     auto& caches = mChannelCaches[channelIndex];
 
     WaveBitmapCache& normalCache = *caches.BitmapCache;
-    normalCache.SetPaintParameters(params);
+    normalCache.SetPaintParameters(deviceParams);
     normalCache.SetSelection(zoomInfo, 0.0, 0.0, false);
     drawRange(painter, normalCache.PerformLookup(zoomInfo, metrics.fromTime, metrics.toTime), left, top, height);
 
@@ -170,7 +195,7 @@ void WaveformPainter::Draw(size_t channelIndex,
 
         if (first < last) {
             WaveBitmapCache& selectedCache = *caches.SelectedBitmapCache;
-            selectedCache.SetPaintParameters(params);
+            selectedCache.SetPaintParameters(deviceParams);
             selectedCache.SetSelection(zoomInfo, ALL_SELECTED_START_TIME, ALL_SELECTED_END_TIME, true);
 
             //! Look up a pixel more than needed on each side, the clip rect trims it to the selection
@@ -179,13 +204,13 @@ void WaveformPainter::Draw(size_t channelIndex,
             const double lookupTo = std::min(metrics.toTime, metrics.selectionEndTime + pixelTime);
             const int64_t lookupFromPixel = zoomInfo.TimeToPosition(lookupFrom);
 
-            painter.save();
             painter.setClipRect(QRectF(left + (first - fromPixel), top, last - first, height), Qt::IntersectClip);
             drawRange(painter, selectedCache.PerformLookup(zoomInfo, lookupFrom, lookupTo),
                       left + (lookupFromPixel - fromPixel), top, height);
-            painter.restore();
         }
     }
+
+    painter.restore();
 }
 
 void WaveformPainter::MarkChanged() noexcept
