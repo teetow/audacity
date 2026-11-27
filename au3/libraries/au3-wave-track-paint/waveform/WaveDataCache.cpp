@@ -297,8 +297,11 @@ bool WaveDataCache::InitializeElement(
     const auto samplesPerColumn
         =std::max(0.0, GetScaledSampleRate() / key.PixelsPerSecond);
 
+    //! NOTE Rounded the same way as the per-column sample counts below, which add up to exactly this.
+    //! Truncating instead left every element "incomplete" whenever the product had a fractional part
+    //! of .5 or more, so the element and its bitmap were rebuilt on every lookup at about half of all zoom levels.
     const size_t elementSamplesCount
-        =samplesPerColumn * WaveDataCache::CacheElementWidth;
+        =static_cast<size_t>(std::round(samplesPerColumn * WaveDataCache::CacheElementWidth));
     size_t processedSamples = 0;
 
     const WaveCacheSampleBlock::Type blockType
