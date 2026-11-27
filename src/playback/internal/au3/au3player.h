@@ -12,9 +12,12 @@
 #include "trackedit/iselectioncontroller.h"
 #include "context/iglobalcontext.h"
 #include "audio/iaudioengine.h"
+#include "framework/ui/imainwindow.h"
 
 #include "au3wrap/au3types.h"
 
+#include <QPointer>
+#include <QQuickWindow>
 #include <QTimer>
 
 #include <chrono>
@@ -28,6 +31,7 @@ class Au3Player : public IPlayer, public muse::async::Asyncable, public muse::Co
 
     muse::ContextInject<context::IGlobalContext> globalContext{ this };
     muse::ContextInject<au::trackedit::ISelectionController> selectionController{ this };
+    muse::ContextInject<muse::ui::IMainWindow> mainWindow{ this };
 
 public:
 
@@ -73,6 +77,9 @@ public:
 private:
     au3::Au3Project& projectRef() const;
 
+    void ensureFrameClock();
+    void onFrame();
+
     bool canStopTransport() const;
 
     TransportSequences makeTransportTracks(au3::Au3TrackList& trackList, bool selectedOnly);
@@ -99,5 +106,6 @@ private:
     std::optional<TargetPoint> m_currentTarget;
     unsigned long long m_consumedSamplesSoFar = 0;
     QTimer m_timer;
+    QPointer<QQuickWindow> m_frameClockWindow;
 };
 }

@@ -76,7 +76,43 @@ Au3Player::Au3Player(const muse::modularity::ContextPtr& ctx)
 
     m_timer.setInterval(16);
     m_timer.setTimerType(Qt::PreciseTimer);
-    m_timer.callOnTimeout([this]() { updatePlaybackPosition(); });
+    m_timer.callOnTimeout([this]() {
+        ensureFrameClock();
+        updatePlaybackPosition();
+    });
+}
+
+//! NOTE The timer alone runs out of step with the display: at 60 Hz some frames get two position
+//! updates and some none, and faster displays get one update every two or three frames. While the
+//! timer runs, the position is also updated once per frame, right before the scene is synchronized,
+//! and the next frame is requested, so the playhead moves exactly once per displayed frame.
+//! The timer stays as the fallback for when no frames are drawn, for example a minimized window.
+void Au3Player::ensureFrameClock()
+{
+    if (m_frameClockWindow) {
+        return;
+    }
+
+    const auto window = mainWindow() ? qobject_cast<QQuickWindow*>(mainWindow()->qWindow()) : nullptr;
+    if (!window) {
+        return;
+    }
+
+    m_frameClockWindow = window;
+    QObject::connect(window, &QQuickWindow::afterAnimating, &m_timer, [this]() { onFrame(); });
+}
+
+void Au3Player::onFrame()
+{
+    if (!m_timer.isActive()) {
+        return;
+    }
+
+    updatePlaybackPosition();
+
+    if (m_timer.isActive() && m_frameClockWindow) {
+        m_frameClockWindow->requestUpdate();
+    }
 }
 
 bool Au3Player::isBusy() const
