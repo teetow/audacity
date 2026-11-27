@@ -60,7 +60,7 @@ void Au3SpectrogramPainter::paintClipChannel(QPainter& qPainter, const ClipChann
     }
 
     const auto channelHeight = static_cast<int>(viewInfo.channelHeight);
-    QImage image{ channelInfo.xPaintEnd - channelInfo.xPaintBegin, channelHeight, QImage::Format_RGB888 };
+    QImage image{ channelInfo.xPaintEnd - channelInfo.xPaintBegin, channelHeight, QImage::Format_RGB32 };
     const std::shared_ptr<WaveClipChannel> clipChannel = clip->GetChannel<WaveClipChannel>(channelInfo.channel);
     IF_ASSERT_FAILED(clipChannel) {
         return;

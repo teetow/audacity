@@ -2,6 +2,9 @@
  * Audacity: A Digital Audio Editor
  */
 #include "au3spectrogramclipchannelpainter.h"
+
+#include <cassert>
+
 #include "./au3spectrogramsettings.h"
 #include "./SpectrumCache.h"
 
@@ -186,6 +189,15 @@ void Au3SpectrogramClipChannelPainter::fillImage(QImage& image,
     // Bug 2389 - always draw at least one pixel of selection.
     int selectedX = static_cast<int>(timeToPosition(viewInfo, selectionInfo.startTime) - leftOffset);
 
+    //! NOTE Write pixels straight into the image rows: QImage::setPixelColor checks bounds, converts
+    //! through QColor and dispatches on the format for every single pixel
+    if (image.format() != QImage::Format_RGB32) {
+        assert(false && "the rows below are written as 32-bit pixels");
+        return;
+    }
+    uchar* const imageBits = image.bits();
+    const qsizetype bytesPerLine = image.bytesPerLine();
+
     // There used to be a pragma omp parallel for here. Can/Should we use QtConcurrent?
     for (int xx = 0; xx < imageWidth; ++xx) {
         const auto w0 = sampleCount(
@@ -216,7 +228,8 @@ void Au3SpectrogramClipChannelPainter::fillImage(QImage& image,
             const float value = specPxCache->values[xx * imageHeight + yy];
             unsigned char rv, gv, bv;
             GetColorGradient(value, selected, colorScheme, &rv, &gv, &bv);
-            image.setPixelColor(xx, imageHeight - yy - 1, QColor(rv, gv, bv));
+            QRgb* const row = reinterpret_cast<QRgb*>(imageBits + (imageHeight - yy - 1) * bytesPerLine);
+            row[xx] = qRgb(rv, gv, bv);
         }
     }
 }
