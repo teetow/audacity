@@ -30,6 +30,8 @@ private:
     {
         std::shared_ptr<WaveDataCache> DataCache;
         std::unique_ptr<WaveBitmapCache> BitmapCache;
+        //! The same tiles in the selected colors, see Draw()
+        std::unique_ptr<WaveBitmapCache> SelectedBitmapCache;
     };
 
     std::vector<ChannelCaches> mChannelCaches;
