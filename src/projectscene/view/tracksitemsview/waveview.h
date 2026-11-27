@@ -115,7 +115,6 @@ signals:
 
 private:
 
-    void updateView();
     void onWaveZoomChanged();
     void paintRecordingPlaceholder(QPainter& painter, const IWavePainter::Params& params);
     IWavePainter::Params getWavePainterParams() const;

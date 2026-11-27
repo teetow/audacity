@@ -331,6 +331,25 @@ void TrackClipsListModel::updateItemMetrics(ViewTrackItem* viewItem)
     time.itemStartTime = std::max(clip.startTime, (m_context->frameStartTime() - cacheTime));
     time.itemEndTime = std::min(clip.endTime, (m_context->frameEndTime() + cacheTime));
 
+    //! NOTE Keep the previous item window while it still covers the visible part of the clip.
+    //! The window decides the size and content of the painted waveform, so while it is kept,
+    //! scrolling only moves the item and the scene graph reuses the waveform texture.
+    //! It is rebuilt once the cache buffer is used up, or when the clip or the zoom changes it.
+    if (!item->isDragGhost()) {
+        const ClipTime prev = item->time();
+        const bool sameClip = muse::is_equal(prev.startTime, clip.startTime) && muse::is_equal(prev.endTime, clip.endTime);
+        const double visibleStart = std::max(clip.startTime, m_context->frameStartTime());
+        const double visibleEnd = std::min(clip.endTime, m_context->frameEndTime());
+        const bool coversVisible = prev.itemStartTime <= visibleStart && prev.itemEndTime >= visibleEnd;
+        const double maxWindow = (m_context->frameEndTime() - m_context->frameStartTime()) + 2 * cacheTime;
+        const double prevWindow = prev.itemEndTime - prev.itemStartTime;
+
+        if (sameClip && coversVisible && prevWindow > 0.0 && prevWindow <= maxWindow + 1e-9) {
+            time.itemStartTime = prev.itemStartTime;
+            time.itemEndTime = prev.itemEndTime;
+        }
+    }
+
     if (selectionController()->isDataSelectedOnTrack(m_trackId)) {
         time.selectionStartTime = selectionController()->dataSelectedStartTime();
         time.selectionEndTime = selectionController()->dataSelectedEndTime();

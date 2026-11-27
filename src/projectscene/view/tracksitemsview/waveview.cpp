@@ -44,6 +44,36 @@ static const float SAMPLE_STALK_DEFAULT_ALPHA = 0.4;
 static const float SAMPLE_STALK_CLIP_SELECTED_ALPHA = 0.6;
 static const float SAMPLE_STALK_DATA_SELECTED_ALPHA = 0.7;
 
+namespace {
+//! The part of the time selection that falls inside the painted window, or an empty range
+std::pair<double, double> paintedSelection(const ClipTime& time)
+{
+    const double start = std::max(time.selectionStartTime, time.itemStartTime);
+    const double end = std::min(time.selectionEndTime, time.itemEndTime);
+    if (!(end > start) || muse::is_equal(time.selectionStartTime, time.selectionEndTime)) {
+        return { 0.0, 0.0 };
+    }
+    return { start, end };
+}
+
+//! A selection that moves outside the painted window, or is replaced by another one
+//! that covers the window the same way, does not change a single pixel
+bool changesPaintedWave(const ClipTime& oldTime, const ClipTime& newTime)
+{
+    if (!muse::is_equal(oldTime.startTime, newTime.startTime)
+        || !muse::is_equal(oldTime.endTime, newTime.endTime)
+        || !muse::is_equal(oldTime.itemStartTime, newTime.itemStartTime)
+        || !muse::is_equal(oldTime.itemEndTime, newTime.itemEndTime)) {
+        return true;
+    }
+
+    const auto oldSelection = paintedSelection(oldTime);
+    const auto newSelection = paintedSelection(newTime);
+    return !muse::is_equal(oldSelection.first, newSelection.first)
+           || !muse::is_equal(oldSelection.second, newSelection.second);
+}
+}
+
 WaveView::WaveView(QQuickItem* parent)
     : QQuickPaintedItem(parent), muse::Contextable(muse::iocCtxForQmlObject(this))
 {
@@ -263,20 +293,14 @@ void WaveView::setTimelineContext(TimelineContext* newContext)
     m_context = newContext;
 
     if (m_context) {
-        connect(m_context, &TimelineContext::frameTimeChanged, this, &WaveView::updateView);
-        connect(m_context, &TimelineContext::selectionStartTimeChanged, this, &WaveView::updateView);
-        connect(m_context, &TimelineContext::selectionEndTimeChanged, this, &WaveView::updateView);
+        //! NOTE Scrolling and selection changes reach the view through setClipTime,
+        //! which only repaints when the painted part of the clip changes
         connect(m_context, &TimelineContext::zoomChanged, this, &WaveView::onWaveZoomChanged);
 
         onWaveZoomChanged();
     }
 
     emit timelineContextChanged();
-}
-
-void WaveView::updateView()
-{
-    update();
 }
 
 QColor WaveView::clipColor() const
@@ -351,11 +375,14 @@ void WaveView::setClipTime(const ClipTime& newClipTime)
     if (m_clipTime == newClipTime) {
         return;
     }
+    const bool repaint = changesPaintedWave(m_clipTime, newClipTime);
     m_clipTime = newClipTime;
     emit clipTimeChanged();
     emit backgroundColorChanged();
 
-    update();
+    if (repaint) {
+        update();
+    }
 }
 
 double WaveView::channelHeightRatio() const
